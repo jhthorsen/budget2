@@ -141,7 +141,17 @@ The CSV import feature supports flexible column mapping. Your CSV file should:
   - **Description**: Transaction description
   - **Type**: Either map to a CSV column containing "income" or "expense", OR set a fixed value for all rows
   - **Account** (optional): Either map to a CSV column, OR set a fixed value for all rows (e.g., "Checking")
-  - **Category** (optional): Must match an existing category name
+  - **Category** (optional): Category names will be automatically created if they don't exist
+
+### Automatic Category Creation
+
+When importing transactions with categories, the system will:
+- Check if the category already exists for your user
+- If it exists, use the existing category
+- If it doesn't exist, automatically create a new category with that name
+- Show you a list of all newly created categories after import
+
+This means you don't need to pre-create all categories before importing!
 
 ### Fixed Values
 

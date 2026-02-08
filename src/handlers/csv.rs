@@ -272,6 +272,7 @@ async fn import_csv_file(
     let mut total_rows = 0;
     let mut successful = 0;
     let mut errors = Vec::new();
+    let mut categories_created = std::collections::HashSet::new();
 
     for (row_idx, result) in reader.records().enumerate() {
         let row_number = row_idx + 2;
@@ -279,7 +280,7 @@ async fn import_csv_file(
 
         match result {
             Ok(record) => {
-                match import_row(state, user, &record, &header_map, mapping).await {
+                match import_row(state, user, &record, &header_map, mapping, &mut categories_created).await {
                     Ok(_) => successful += 1,
                     Err(e) => {
                         errors.push(ImportError {
@@ -300,11 +301,15 @@ async fn import_csv_file(
         }
     }
 
+    let mut categories_created_vec: Vec<String> = categories_created.into_iter().collect();
+    categories_created_vec.sort();
+
     Ok(ImportResult {
         total_rows,
         successful,
         failed: errors.len(),
         errors,
+        categories_created: categories_created_vec,
     })
 }
 
@@ -314,6 +319,7 @@ async fn import_row(
     record: &csv::StringRecord,
     header_map: &HashMap<String, usize>,
     mapping: &ColumnMapping,
+    categories_created: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
     let get_field = |col: &str| -> Result<String, String> {
         header_map
@@ -372,14 +378,37 @@ async fn import_row(
     let category_id = if let Some(cat_col) = &mapping.category_column {
         if !cat_col.is_empty() {
             if let Ok(cat_name) = get_field(cat_col) {
-                sqlx::query_scalar::<_, i64>(
-                    "SELECT id FROM categories WHERE user_id = ? AND name = ?",
-                )
-                .bind(user.id)
-                .bind(&cat_name)
-                .fetch_optional(&state.pool)
-                .await
-                .map_err(|e| format!("Database error: {}", e))?
+                let cat_name = cat_name.trim();
+                if !cat_name.is_empty() {
+                    // First, try to find existing category
+                    let existing = sqlx::query_scalar::<_, i64>(
+                        "SELECT id FROM categories WHERE user_id = ? AND name = ?",
+                    )
+                    .bind(user.id)
+                    .bind(cat_name)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .map_err(|e| format!("Database error: {}", e))?;
+
+                    if let Some(cat_id) = existing {
+                        Some(cat_id)
+                    } else {
+                        // Category doesn't exist, create it
+                        let result = sqlx::query(
+                            "INSERT INTO categories (user_id, name) VALUES (?, ?)",
+                        )
+                        .bind(user.id)
+                        .bind(cat_name)
+                        .execute(&state.pool)
+                        .await
+                        .map_err(|e| format!("Failed to create category '{}': {}", cat_name, e))?;
+
+                        categories_created.insert(cat_name.to_string());
+                        Some(result.last_insert_rowid())
+                    }
+                } else {
+                    None
+                }
             } else {
                 None
             }

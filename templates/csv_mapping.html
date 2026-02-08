@@ -123,7 +123,7 @@
                             <option value="{{ header }}">{{ header }}</option>
                             {% endfor %}
                         </select>
-                        <small>Category name must match existing categories</small>
+                        <small>Categories will be automatically created if they don't exist</small>
                     </label>
 
                     {% if !categories.is_empty() %}
@@ -134,6 +134,7 @@
                             <li>{{ category.name }}</li>
                             {% endfor %}
                         </ul>
+                        <small><em>New categories from your CSV will be added to this list</em></small>
                     </details>
                     {% endif %}
 

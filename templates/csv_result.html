@@ -47,6 +47,18 @@
                 </div>
             </article>
 
+            {% if !result.categories_created.is_empty() %}
+            <article>
+                <header><strong>✨ Categories Automatically Created</strong></header>
+                <p>The following categories were created during import:</p>
+                <ul>
+                    {% for category in result.categories_created %}
+                    <li>{{ category }}</li>
+                    {% endfor %}
+                </ul>
+            </article>
+            {% endif %}
+
             {% if !result.errors.is_empty() %}
             <article>
                 <header><strong>Import Errors</strong></header>

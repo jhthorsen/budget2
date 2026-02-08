@@ -104,6 +104,7 @@ pub struct ImportResult {
     pub successful: usize,
     pub failed: usize,
     pub errors: Vec<ImportError>,
+    pub categories_created: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
