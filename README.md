@@ -5,8 +5,9 @@ A web-based budget tracking application built with Rust, using the Axum web fram
 ## Features
 
 - **OAuth2 Authentication** - Secure login using OAuth2 (configured for Google by default)
-- **Transaction Tracking** - Track both income and expenses
+- **Transaction Tracking** - Track both income and expenses with optional account field
 - **Categories** - Organize transactions with custom categories
+- **CSV Import** - Import transactions from CSV files with flexible column mapping
 - **Budget Summary** - View total income, expenses, and balance at a glance
 - **Modern UI** - Clean interface using Pico CSS
 - **No JavaScript Framework** - Simple HTML forms and plain HTTP requests
@@ -66,8 +67,13 @@ The database is automatically created and migrated on first run. The SQLite data
 
 1. **Login** - Click "Login with OAuth" to authenticate
 2. **Add Categories** - Create categories to organize your transactions (optional)
-3. **Add Transactions** - Record income and expenses with descriptions and dates
-4. **View Dashboard** - See your budget summary and recent transactions
+3. **Add Transactions** - Record income and expenses with descriptions, dates, and optional accounts
+4. **Import CSV** - Bulk import transactions from CSV files:
+   - Click "Import CSV" button on the dashboard
+   - Upload your CSV file
+   - Map CSV columns to transaction fields
+   - Review import results showing any errors
+5. **View Dashboard** - See your budget summary and recent transactions
 
 ## Project Structure
 
@@ -77,14 +83,19 @@ budget2/
 │   ├── main.rs              # Application entry point
 │   ├── auth.rs              # OAuth2 authentication
 │   ├── handlers/
-│   │   └── mod.rs           # Route handlers
+│   │   ├── mod.rs           # Route handlers
+│   │   └── csv.rs           # CSV import handlers
 │   └── models/
 │       └── mod.rs           # Database models
 ├── templates/
 │   ├── index.html           # Landing page
-│   └── dashboard.html       # Main dashboard
+│   ├── dashboard.html       # Main dashboard
+│   ├── csv_upload.html      # CSV upload page
+│   ├── csv_mapping.html     # Column mapping page
+│   └── csv_result.html      # Import results page
 ├── migrations/
-│   └── 20240101000000_initial.sql  # Database schema
+│   ├── 20240101000000_initial.sql  # Database schema
+│   └── 20240102000000_add_account.sql  # Account field migration
 ├── Cargo.toml
 └── .env.example
 ```
@@ -111,6 +122,51 @@ cargo clippy
 - `OAUTH_TOKEN_URL` - OAuth2 token URL
 - `OAUTH_REDIRECT_URL` - OAuth2 redirect URL
 - `OAUTH_USERINFO_URL` - OAuth2 user info endpoint
+
+## CSV Import Format
+
+The CSV import feature supports flexible column mapping. Your CSV file should:
+
+- Have a header row with column names
+- Include the following data:
+  - **Date**: YYYY-MM-DD or YYYY/MM/DD format
+  - **Amount**: Numeric value ($ and commas are automatically removed)
+  - **Description**: Transaction description
+  - **Type**: Either map to a CSV column containing "income" or "expense", OR set a fixed value for all rows
+  - **Account** (optional): Either map to a CSV column, OR set a fixed value for all rows (e.g., "Checking")
+  - **Category** (optional): Must match an existing category name
+
+### Fixed Values
+
+You can use fixed values instead of CSV columns for:
+- **Type**: If all transactions in the CSV are the same type (e.g., all expenses)
+- **Account**: If all transactions are from the same account (e.g., all from "Checking")
+
+This is useful when importing bank statements that don't include these fields.
+
+Example CSV with type column:
+```csv
+Date,Description,Amount,Type,Account,Category
+2024-01-15,Salary,$3000.00,income,Checking,
+2024-01-16,Groceries,125.50,expense,Checking,Food
+2024/01/17,Electric Bill,85.00,expense,Checking,Utilities
+```
+
+Example CSV without type column (using fixed value):
+```csv
+Date,Description,Amount,Category
+2024-01-16,Groceries,125.50,Food
+2024/01/17,Electric Bill,85.00,Utilities
+2024/01/18,Internet,60.00,Utilities
+```
+*In this case, you would set Type to "expense" and Account to "Checking" as fixed values during import.*
+
+The import process will:
+1. Show you all CSV column headers
+2. Let you map them to transaction fields
+3. Import all valid rows
+4. Report any rows that failed with detailed error messages
+5. Automatically delete the temporary CSV file after processing
 
 ## License
 

@@ -30,6 +30,7 @@ pub struct Transaction {
     pub transaction_date: String,
     #[serde(rename = "type")]
     pub transaction_type: String,
+    pub account: Option<String>,
     pub created_at: String,
 }
 
@@ -47,6 +48,7 @@ pub struct NewTransaction {
     pub transaction_date: String,
     #[serde(rename = "type")]
     pub transaction_type: String,
+    pub account: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize)]
@@ -56,6 +58,7 @@ pub struct TransactionWithCategory {
     pub description: String,
     pub transaction_date: String,
     pub transaction_type: String,
+    pub account: Option<String>,
     pub category_name: Option<String>,
     pub category_color: Option<String>,
 }
@@ -65,4 +68,47 @@ pub struct BudgetSummary {
     pub total_income: f64,
     pub total_expenses: f64,
     pub balance: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PaginationInfo {
+    pub current_page: i64,
+    pub total_pages: i64,
+    pub per_page: i64,
+    pub total_items: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CsvUploadSession {
+    pub file_id: String,
+    pub file_path: String,
+    pub headers: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ColumnMapping {
+    pub file_id: String,
+    pub date_column: String,
+    pub amount_column: String,
+    pub description_column: String,
+    pub type_column: Option<String>,
+    pub type_fixed_value: Option<String>,
+    pub account_column: Option<String>,
+    pub account_fixed_value: Option<String>,
+    pub category_column: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportResult {
+    pub total_rows: usize,
+    pub successful: usize,
+    pub failed: usize,
+    pub errors: Vec<ImportError>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportError {
+    pub row_number: usize,
+    pub row_data: String,
+    pub error: String,
 }

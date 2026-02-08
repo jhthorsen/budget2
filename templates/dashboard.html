@@ -19,7 +19,14 @@
 
     <main class="container">
         <section>
-            <h1>Dashboard</h1>
+            <div class="grid">
+                <div>
+                    <h1>Dashboard</h1>
+                </div>
+                <div style="text-align: right;">
+                    <a href="/import" role="button" class="secondary">Import CSV</a>
+                </div>
+            </div>
             
             <!-- Budget Summary -->
             <article>
@@ -73,6 +80,10 @@
                                 {% endfor %}
                             </select>
                         </label>
+                        <label>
+                            Account (optional)
+                            <input type="text" name="account" placeholder="e.g., Checking, Savings">
+                        </label>
                         <button type="submit">Add Transaction</button>
                     </form>
                 </article>
@@ -107,6 +118,7 @@
                             <tr>
                                 <th>Date</th>
                                 <th>Description</th>
+                                <th>Account</th>
                                 <th>Category</th>
                                 <th>Type</th>
                                 <th>Amount</th>
@@ -117,6 +129,14 @@
                             <tr>
                                 <td>{{ transaction.transaction_date }}</td>
                                 <td>{{ transaction.description }}</td>
+                                <td>
+                                    {% match transaction.account %}
+                                        {% when Some with (account) %}
+                                            {{ account }}
+                                        {% when None %}
+                                            <em>-</em>
+                                    {% endmatch %}
+                                </td>
                                 <td>
                                     {% match transaction.category_name %}
                                         {% when Some with (name) %}

@@ -25,6 +25,7 @@ pub struct AppState {
 pub struct OAuthUserInfo {
     pub email: String,
     pub name: Option<String>,
+    #[serde(alias = "sub")]
     pub id: String,
 }
 
@@ -98,7 +99,12 @@ pub async fn auth_callback(
         .await
         .map_err(|e| format!("Session error: {}", e))?;
 
-    Ok(Redirect::to("/"))
+    session
+        .save()
+        .await
+        .map_err(|e| format!("Session save error: {}", e))?;
+
+    Ok(Redirect::to("/dashboard"))
 }
 
 async fn get_or_create_user(pool: &SqlitePool, user_info: &OAuthUserInfo) -> Result<User> {

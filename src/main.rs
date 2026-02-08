@@ -8,11 +8,15 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use handlers::{create_category_handler, create_transaction_handler, dashboard_handler, index_handler};
+use handlers::{
+    create_category_handler, create_transaction_handler, dashboard_handler, index_handler,
+    csv::{csv_upload_page, csv_upload_handler, csv_import_handler},
+};
 use sqlx::sqlite::SqlitePoolOptions;
 use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore;
+use tower_sessions::cookie::SameSite;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -40,6 +44,9 @@ async fn main() -> Result<()> {
     session_store.migrate().await?;
 
     let session_layer = SessionManagerLayer::new(session_store)
+        .with_name("budget_session")
+        .with_same_site(SameSite::Lax)
+        .with_secure(false) // Set to true in production with HTTPS
         .with_expiry(Expiry::OnInactivity(time::Duration::days(7)));
 
     let oauth_client = create_oauth_client()?;
@@ -57,6 +64,9 @@ async fn main() -> Result<()> {
         .route("/auth/callback", get(auth_callback))
         .route("/transactions", post(create_transaction_handler))
         .route("/categories", post(create_category_handler))
+        .route("/import", get(csv_upload_page))
+        .route("/import/upload", post(csv_upload_handler))
+        .route("/import/process", post(csv_import_handler))
         .layer(session_layer)
         .layer(TraceLayer::new_for_http())
         .with_state(state);

@@ -1,9 +1,12 @@
+pub mod csv;
+
 use askama::Template;
 use axum::{
-    extract::State,
+    extract::{Query, State},
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
+use serde::Deserialize;
 use sqlx::SqlitePool;
 use tower_sessions::Session;
 
@@ -11,6 +14,22 @@ use crate::{
     auth::{get_current_user, AppState},
     models::*,
 };
+
+#[derive(Debug, Deserialize)]
+pub struct PaginationParams {
+    #[serde(default = "default_page")]
+    pub page: i64,
+    #[serde(default = "default_per_page")]
+    pub per_page: i64,
+}
+
+fn default_page() -> i64 {
+    1
+}
+
+fn default_per_page() -> i64 {
+    20
+}
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -25,6 +44,7 @@ struct DashboardTemplate {
     transactions: Vec<TransactionWithCategory>,
     categories: Vec<Category>,
     summary: BudgetSummary,
+    pagination: PaginationInfo,
 }
 
 pub async fn index_handler(
@@ -71,6 +91,7 @@ pub async fn dashboard_handler(
             t.description,
             t.transaction_date,
             t.type as transaction_type,
+            t.account,
             c.name as category_name,
             c.color as category_color
         FROM transactions t
@@ -146,8 +167,8 @@ pub async fn create_transaction_handler(
 
     sqlx::query(
         r#"
-        INSERT INTO transactions (user_id, category_id, amount, description, transaction_date, type)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO transactions (user_id, category_id, amount, description, transaction_date, type, account)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(user.id)
@@ -156,6 +177,7 @@ pub async fn create_transaction_handler(
     .bind(&new_transaction.description)
     .bind(&new_transaction.transaction_date)
     .bind(&new_transaction.transaction_type)
+    .bind(&new_transaction.account)
     .execute(&state.pool)
     .await
     .map_err(|e| {
@@ -209,8 +231,8 @@ async fn calculate_summary(pool: &SqlitePool, user_id: i64) -> Result<BudgetSumm
     let result = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT 
-            COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as total_income,
-            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_expenses
+            CAST(COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0.0) AS REAL) as total_income,
+            CAST(COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0.0) AS REAL) as total_expenses
         FROM transactions
         WHERE user_id = ?
         "#,
