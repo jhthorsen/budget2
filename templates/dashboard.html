@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Budget App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+</head>
+<body>
+    <nav class="container-fluid">
+        <ul>
+            <li><strong>Budget App</strong></li>
+        </ul>
+        <ul>
+            <li>{{ user.name }}</li>
+            <li><a href="/logout" role="button">Logout</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        <section>
+            <h1>Dashboard</h1>
+            
+            <!-- Budget Summary -->
+            <article>
+                <header><strong>Budget Summary</strong></header>
+                <div class="grid">
+                    <div>
+                        <h6>Total Income</h6>
+                        <p style="color: green; font-size: 1.5em;">${{ summary.total_income }}</p>
+                    </div>
+                    <div>
+                        <h6>Total Expenses</h6>
+                        <p style="color: red; font-size: 1.5em;">${{ summary.total_expenses }}</p>
+                    </div>
+                    <div>
+                        <h6>Balance</h6>
+                        <p style="font-size: 1.5em; {% if summary.balance >= 0.0 %}color: green;{% else %}color: red;{% endif %}">${{ summary.balance }}</p>
+                    </div>
+                </div>
+            </article>
+
+            <!-- Add Transaction Form -->
+            <details>
+                <summary role="button" class="secondary">Add Transaction</summary>
+                <article>
+                    <form action="/transactions" method="post">
+                        <label>
+                            Type
+                            <select name="type" required>
+                                <option value="income">Income</option>
+                                <option value="expense">Expense</option>
+                            </select>
+                        </label>
+                        <label>
+                            Amount
+                            <input type="number" name="amount" step="0.01" min="0" required placeholder="0.00">
+                        </label>
+                        <label>
+                            Description
+                            <input type="text" name="description" required placeholder="Enter description">
+                        </label>
+                        <label>
+                            Date
+                            <input type="date" name="transaction_date" required>
+                        </label>
+                        <label>
+                            Category (optional)
+                            <select name="category_id">
+                                <option value="">No category</option>
+                                {% for category in categories %}
+                                <option value="{{ category.id }}">{{ category.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <button type="submit">Add Transaction</button>
+                    </form>
+                </article>
+            </details>
+
+            <!-- Add Category Form -->
+            <details>
+                <summary role="button" class="secondary">Add Category</summary>
+                <article>
+                    <form action="/categories" method="post">
+                        <label>
+                            Name
+                            <input type="text" name="name" required placeholder="Enter category name">
+                        </label>
+                        <label>
+                            Color (optional)
+                            <input type="color" name="color" placeholder="#000000">
+                        </label>
+                        <button type="submit">Add Category</button>
+                    </form>
+                </article>
+            </details>
+
+            <!-- Transactions List -->
+            <h2>Recent Transactions</h2>
+            {% if transactions.is_empty() %}
+                <p>No transactions yet. Add your first transaction above!</p>
+            {% else %}
+                <figure>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Category</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for transaction in transactions %}
+                            <tr>
+                                <td>{{ transaction.transaction_date }}</td>
+                                <td>{{ transaction.description }}</td>
+                                <td>
+                                    {% match transaction.category_name %}
+                                        {% when Some with (name) %}
+                                            {% match transaction.category_color %}
+                                                {% when Some with (color) %}
+                                                    <span style="display: inline-block; width: 12px; height: 12px; background-color: {{ color }}; border-radius: 50%; margin-right: 5px;"></span>
+                                                {% when None %}
+                                            {% endmatch %}
+                                            {{ name }}
+                                        {% when None %}
+                                            <em>None</em>
+                                    {% endmatch %}
+                                </td>
+                                <td>
+                                    {% if transaction.transaction_type == "income" %}
+                                        <span style="color: green;">Income</span>
+                                    {% else %}
+                                        <span style="color: red;">Expense</span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: right; {% if transaction.transaction_type == "income" %}color: green;{% else %}color: red;{% endif %}">
+                                    {% if transaction.transaction_type == "income" %}+{% else %}-{% endif %}${{ transaction.amount }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </figure>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>

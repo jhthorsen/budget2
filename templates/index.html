@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+</head>
+<body>
+    <nav class="container-fluid">
+        <ul>
+            <li><strong>Budget App</strong></li>
+        </ul>
+        <ul>
+            {% match user %}
+                {% when Some with (u) %}
+                    <li>{{ u.name }}</li>
+                    <li><a href="/logout" role="button">Logout</a></li>
+                {% when None %}
+                    <li><a href="/login" role="button">Login with OAuth</a></li>
+            {% endmatch %}
+        </ul>
+    </nav>
+
+    <main class="container">
+        <section>
+            <h1>Welcome to Budget App</h1>
+            <p>Track your income and expenses with ease.</p>
+            
+            {% match user %}
+                {% when None %}
+                    <p>Please login to get started.</p>
+                    <a href="/login" role="button" class="contrast">Login with OAuth</a>
+                {% when Some with (u) %}
+            {% endmatch %}
+        </section>
+    </main>
+</body>
+</html>
