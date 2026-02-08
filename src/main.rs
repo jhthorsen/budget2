@@ -13,6 +13,7 @@ use handlers::{
     create_category_handler, create_transaction_handler, create_account_handler, 
     toggle_account_ownership_handler, dashboard_handler, index_handler,
     csv::{csv_upload_page, csv_upload_handler, csv_import_handler},
+    rules::{rules_list, rules_new_page, rules_create, rules_edit_page, rules_update, rules_delete, rules_apply},
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use tower_http::trace::TraceLayer;
@@ -72,6 +73,11 @@ async fn main() -> Result<()> {
         .route("/import", get(csv_upload_page))
         .route("/import/upload", post(csv_upload_handler))
         .route("/import/process", post(csv_import_handler))
+        .route("/rules", get(rules_list))
+        .route("/rules/new", get(rules_new_page).post(rules_create))
+        .route("/rules/:id/edit", get(rules_edit_page).post(rules_update))
+        .route("/rules/:id/delete", post(rules_delete))
+        .route("/rules/:id/apply", post(rules_apply))
         .layer(session_layer)
         .layer(TraceLayer::new_for_http())
         .with_state(state);

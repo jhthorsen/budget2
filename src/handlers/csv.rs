@@ -485,6 +485,33 @@ async fn import_row(
         None
     };
 
+    // Apply import rules if category/account not set from CSV
+    let mut final_category_id = category_id;
+    let mut final_account_id = account_id;
+
+    if category_id.is_none() || account_id.is_none() {
+        // Fetch rules and apply first match
+        let rules = sqlx::query_as::<_, ImportRule>(
+            "SELECT * FROM import_rules WHERE user_id = ? ORDER BY priority ASC, id ASC",
+        )
+        .bind(user.id)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|e| format!("Database error fetching rules: {}", e))?;
+
+        let description_lower = description.to_lowercase();
+        if let Some(matched_rule) = rules.iter().find(|rule| {
+            description_lower.contains(&rule.pattern.to_lowercase())
+        }) {
+            if category_id.is_none() && matched_rule.category_id.is_some() {
+                final_category_id = matched_rule.category_id;
+            }
+            if account_id.is_none() && matched_rule.account_id.is_some() {
+                final_account_id = matched_rule.account_id;
+            }
+        }
+    }
+
     // Check for duplicate transaction (same date, amount, and description)
     let duplicate_exists = sqlx::query_scalar::<_, i64>(
         r#"
@@ -511,8 +538,8 @@ async fn import_row(
         "#,
     )
     .bind(user.id)
-    .bind(category_id)
-    .bind(account_id)
+    .bind(final_category_id)
+    .bind(final_account_id)
     .bind(amount)
     .bind(&description)
     .bind(&transaction_date)

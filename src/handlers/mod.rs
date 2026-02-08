@@ -1,4 +1,5 @@
 pub mod csv;
+pub mod rules;
 
 use askama::Template;
 use axum::{

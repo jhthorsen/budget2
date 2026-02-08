@@ -53,6 +53,7 @@ pub struct Transaction {
     pub amount: f64,
     pub description: String,
     pub transaction_date: String,
+    #[sqlx(rename = "type")]
     #[serde(rename = "type")]
     pub transaction_type: String,
     pub account: Option<String>,
@@ -153,4 +154,23 @@ pub struct ImportError {
     pub row_number: usize,
     pub row_data: String,
     pub error: String,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ImportRule {
+    pub id: i64,
+    pub user_id: i64,
+    pub pattern: String,
+    pub category_id: Option<i64>,
+    pub account_id: Option<i64>,
+    pub priority: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportRuleForm {
+    pub pattern: String,
+    pub category_id: Option<String>,
+    pub account_id: Option<String>,
+    pub priority: String,
 }
