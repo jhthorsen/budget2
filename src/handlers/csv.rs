@@ -348,27 +348,32 @@ async fn import_row(
 
     let description = get_field(&mapping.description_column)?;
     
-    // Type: use column value if specified, otherwise use fixed value
-    let transaction_type = if let Some(col) = &mapping.type_column {
-        if !col.is_empty() {
-            get_field(col)?.to_lowercase().trim().to_string()
-        } else if let Some(fixed) = &mapping.type_fixed_value {
-            fixed.to_lowercase().trim().to_string()
-        } else {
-            return Err("No type column or fixed value specified".to_string());
-        }
-    } else if let Some(fixed) = &mapping.type_fixed_value {
-        fixed.to_lowercase().trim().to_string()
-    } else {
-        return Err("No type column or fixed value specified".to_string());
-    };
-
-    if transaction_type != "income" && transaction_type != "expense" {
+    // Determine transaction type based on amount sign and fixed type value
+    let fixed_type = mapping.type_fixed_value.to_lowercase().trim().to_string();
+    
+    if fixed_type != "income" && fixed_type != "expense" {
         return Err(format!(
             "Invalid transaction type: {}. Must be 'income' or 'expense'",
-            transaction_type
+            fixed_type
         ));
     }
+    
+    // Logic: If fixed type is "income", negative amounts are expenses and positive are income
+    //        If fixed type is "expense", negative amounts are income and positive are expenses
+    let transaction_type = if fixed_type == "income" {
+        if amount < 0.0 {
+            "expense"
+        } else {
+            "income"
+        }
+    } else {
+        // fixed_type == "expense"
+        if amount < 0.0 {
+            "income"
+        } else {
+            "expense"
+        }
+    }.to_string();
 
     // Account: use column value if specified, otherwise use fixed value
     let account_name = if let Some(col) = &mapping.account_column {

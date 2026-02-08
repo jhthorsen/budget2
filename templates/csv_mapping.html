@@ -7,12 +7,11 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <script>
         function validateForm(event) {
-            const typeColumn = document.getElementById('type_column').value;
             const typeFixed = document.getElementById('type_fixed_value').value;
             
-            if (!typeColumn && !typeFixed) {
+            if (!typeFixed) {
                 event.preventDefault();
-                alert('Please either select a Type Column or choose a Fixed Type Value');
+                alert('Please select a Transaction Type');
                 return false;
             }
             
@@ -75,27 +74,15 @@
                         </select>
                     </label>
 
-                    <fieldset>
-                        <legend>Transaction Type <span style="color: red;">*</span></legend>
-                        <label>
-                            Type Column (from CSV)
-                            <select name="type_column" id="type_column" onchange="toggleTypeFixed()">
-                                <option value="">-- None (use fixed value below) --</option>
-                                {% for header in headers %}
-                                <option value="{{ header }}">{{ header }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>
-                            OR Fixed Type Value
-                            <select name="type_fixed_value" id="type_fixed_value">
-                                <option value="">-- Select if no column --</option>
-                                <option value="income">Income</option>
-                                <option value="expense">Expense</option>
-                            </select>
-                            <small>Use this if all transactions are the same type</small>
-                        </label>
-                    </fieldset>
+                    <label>
+                        Transaction Type <span style="color: red;">*</span>
+                        <select name="type_fixed_value" id="type_fixed_value" required>
+                            <option value="">-- Select Type --</option>
+                            <option value="income">Income</option>
+                            <option value="expense">Expense</option>
+                        </select>
+                        <small>Negative amounts will be treated as the opposite type (e.g., if Income is selected, negative amounts become Expenses)</small>
+                    </label>
 
                     <fieldset>
                         <legend>Account (optional)</legend>
