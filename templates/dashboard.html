@@ -165,6 +165,45 @@
                         </tbody>
                     </table>
                 </figure>
+
+                <!-- Pagination Controls -->
+                {% if pagination.total_pages > 1 %}
+                <nav aria-label="Pagination">
+                    <ul style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; list-style: none; padding: 0;">
+                        <!-- Previous Button -->
+                        {% if pagination.current_page > 1 %}
+                            <li><a href="/dashboard?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}" role="button" class="secondary">‹ Previous</a></li>
+                        {% else %}
+                            <li><a role="button" class="secondary" disabled style="opacity: 0.5; pointer-events: none;">‹ Previous</a></li>
+                        {% endif %}
+
+                        <!-- Page Numbers -->
+                        <li style="margin: 0 1rem;">
+                            Page {{ pagination.current_page }} of {{ pagination.total_pages }}
+                            <small style="display: block; color: #666;">({{ pagination.total_items }} total)</small>
+                        </li>
+
+                        <!-- Next Button -->
+                        {% if pagination.current_page < pagination.total_pages %}
+                            <li><a href="/dashboard?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}" role="button" class="secondary">Next ›</a></li>
+                        {% else %}
+                            <li><a role="button" class="secondary" disabled style="opacity: 0.5; pointer-events: none;">Next ›</a></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+
+                <!-- Items per page selector -->
+                <div style="text-align: center; margin-top: 1rem;">
+                    <small>
+                        Show: 
+                        <a href="/dashboard?page=1&per_page=10" {% if pagination.per_page == 10 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>10</a> |
+                        <a href="/dashboard?page=1&per_page=20" {% if pagination.per_page == 20 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>20</a> |
+                        <a href="/dashboard?page=1&per_page=50" {% if pagination.per_page == 50 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>50</a> |
+                        <a href="/dashboard?page=1&per_page=100" {% if pagination.per_page == 100 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>100</a>
+                        per page
+                    </small>
+                </div>
+                {% endif %}
             {% endif %}
         </section>
     </main>

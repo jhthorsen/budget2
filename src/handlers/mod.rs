@@ -28,7 +28,7 @@ fn default_page() -> i64 {
 }
 
 fn default_per_page() -> i64 {
-    20
+    100
 }
 
 #[derive(Template)]
@@ -75,6 +75,7 @@ pub async fn index_handler(
 pub async fn dashboard_handler(
     State(state): State<AppState>,
     session: Session,
+    Query(params): Query<PaginationParams>,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool).await;
 
@@ -82,6 +83,28 @@ pub async fn dashboard_handler(
         Some(u) => u,
         None => return Ok(Redirect::to("/").into_response()),
     };
+
+    let page = params.page.max(1);
+    let per_page = params.per_page.clamp(10, 100);
+    let offset = (page - 1) * per_page;
+
+    // Get total count for pagination
+    let total_items: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM transactions WHERE user_id = ?"
+    )
+    .bind(user.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error",
+        )
+            .into_response()
+    })?;
+
+    let total_pages = (total_items + per_page - 1) / per_page;
 
     let transactions = sqlx::query_as::<_, TransactionWithCategory>(
         r#"
@@ -98,10 +121,12 @@ pub async fn dashboard_handler(
         LEFT JOIN categories c ON t.category_id = c.id
         WHERE t.user_id = ?
         ORDER BY t.transaction_date DESC, t.created_at DESC
-        LIMIT 50
+        LIMIT ? OFFSET ?
         "#,
     )
     .bind(user.id)
+    .bind(per_page)
+    .bind(offset)
     .fetch_all(&state.pool)
     .await
     .map_err(|e| {
@@ -135,11 +160,19 @@ pub async fn dashboard_handler(
             .into_response()
     })?;
 
+    let pagination = PaginationInfo {
+        current_page: page,
+        total_pages,
+        per_page,
+        total_items,
+    };
+
     let template = DashboardTemplate {
         user,
         transactions,
         categories,
         summary,
+        pagination,
     };
 
     template
