@@ -35,6 +35,8 @@ pub struct TransactionFilters {
     pub transaction_type: Option<String>,
     #[serde(default, deserialize_with = "empty_string_as_none_i64")]
     pub category_id: Option<i64>,
+    #[serde(default, deserialize_with = "empty_string_as_none_i64")]
+    pub account_id: Option<i64>,
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub account: Option<String>,
     #[serde(default, deserialize_with = "empty_string_as_none")]
@@ -87,6 +89,7 @@ struct DashboardTemplate {
     user: User,
     transactions: Vec<TransactionWithCategory>,
     categories: Vec<Category>,
+    accounts: Vec<Account>,
     summary: BudgetSummary,
     pagination: PaginationInfo,
     filters: TransactionFilters,
@@ -156,6 +159,12 @@ pub async fn dashboard_handler(
         params.push(cat_id.to_string());
     }
 
+    if let Some(acc_id) = filters.account_id {
+        where_clauses.push("t.account_id = ?".to_string());
+        params.push(acc_id.to_string());
+    }
+
+    // Keep old account filter for backward compatibility
     if let Some(ref account) = filters.account {
         if !account.trim().is_empty() {
             where_clauses.push("t.account = ?".to_string());
@@ -206,10 +215,13 @@ pub async fn dashboard_handler(
             t.transaction_date,
             t.type as transaction_type,
             t.account,
+            t.account_id,
+            a.name as account_name,
             c.name as category_name,
             c.color as category_color
         FROM transactions t
         LEFT JOIN categories c ON t.category_id = c.id
+        LEFT JOIN accounts a ON t.account_id = a.id
         WHERE {}
         ORDER BY t.transaction_date DESC, t.created_at DESC
         LIMIT ? OFFSET ?
@@ -248,6 +260,27 @@ pub async fn dashboard_handler(
                 .into_response()
         })?;
 
+    // Get accounts accessible to this user
+    let accounts = sqlx::query_as::<_, Account>(
+        r#"
+        SELECT a.* FROM accounts a
+        INNER JOIN user_accounts ua ON a.id = ua.account_id
+        WHERE ua.user_id = ?
+        ORDER BY a.name
+        "#
+    )
+    .bind(user.id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error",
+        )
+            .into_response()
+    })?;
+
     let summary = calculate_summary(&state.pool, user.id).await.map_err(|e| {
         tracing::error!("Database error: {}", e);
         (
@@ -268,6 +301,7 @@ pub async fn dashboard_handler(
         user,
         transactions,
         categories,
+        accounts,
         summary,
         pagination,
         filters,
@@ -298,12 +332,13 @@ pub async fn create_transaction_handler(
 
     sqlx::query(
         r#"
-        INSERT INTO transactions (user_id, category_id, amount, description, transaction_date, type, account)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO transactions (user_id, category_id, account_id, amount, description, transaction_date, type, account)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(user.id)
     .bind(new_transaction.category_id)
+    .bind(new_transaction.account_id)
     .bind(new_transaction.amount)
     .bind(&new_transaction.description)
     .bind(&new_transaction.transaction_date)
@@ -338,6 +373,71 @@ pub async fn create_category_handler(
     .bind(user.id)
     .bind(&new_category.name)
     .bind(&new_category.color)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error",
+        )
+            .into_response()
+    })?;
+
+    Ok(Redirect::to("/dashboard"))
+}
+
+pub async fn create_account_handler(
+    State(state): State<AppState>,
+    session: Session,
+    Form(new_account): Form<NewAccount>,
+) -> Result<Redirect, Response> {
+    let user = get_current_user(&session, &state.pool)
+        .await
+        .ok_or_else(|| Redirect::to("/").into_response())?;
+
+    // Check if account already exists
+    let existing = sqlx::query_scalar::<_, i64>("SELECT id FROM accounts WHERE name = ?")
+        .bind(&new_account.name)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error",
+            )
+                .into_response()
+        })?;
+
+    let account_id = if let Some(id) = existing {
+        id
+    } else {
+        // Create new account
+        let result = sqlx::query(
+            "INSERT INTO accounts (name, description) VALUES (?, ?)",
+        )
+        .bind(&new_account.name)
+        .bind(&new_account.description)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error",
+            )
+                .into_response()
+        })?;
+        result.last_insert_rowid()
+    };
+
+    // Link user to account
+    sqlx::query(
+        "INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)",
+    )
+    .bind(user.id)
+    .bind(account_id)
     .execute(&state.pool)
     .await
     .map_err(|e| {

@@ -82,9 +82,32 @@
                         </label>
                         <label>
                             Account (optional)
-                            <input type="text" name="account" placeholder="e.g., Checking, Savings">
+                            <select name="account_id">
+                                <option value="">No account</option>
+                                {% for account in accounts %}
+                                <option value="{{ account.id }}">{{ account.name }}</option>
+                                {% endfor %}
+                            </select>
                         </label>
                         <button type="submit">Add Transaction</button>
+                    </form>
+                </article>
+            </details>
+
+            <!-- Add Account Form -->
+            <details>
+                <summary role="button" class="secondary">Add Account</summary>
+                <article>
+                    <form action="/accounts" method="post">
+                        <label>
+                            Name
+                            <input type="text" name="name" required placeholder="e.g., Checking, Savings, Credit Card">
+                        </label>
+                        <label>
+                            Description (optional)
+                            <input type="text" name="description" placeholder="Optional description">
+                        </label>
+                        <button type="submit">Add Account</button>
                     </form>
                 </article>
             </details>
@@ -146,7 +169,17 @@
                             </label>
                             <label>
                                 Account
-                                <input type="text" name="account" placeholder="Account name..." value="{% match filters.account %}{% when Some with (a) %}{{ a }}{% when None %}{% endmatch %}">
+                                <select name="account_id" id="account_filter">
+                                    <option value="">All Accounts</option>
+                                    {% for account in accounts %}
+                                    <option value="{{ account.id }}">{{ account.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% match filters.account_id %}
+                                    {% when Some with (aid) %}
+                                        <script>document.getElementById('account_filter').value = '{{ aid }}';</script>
+                                    {% when None %}
+                                {% endmatch %}
                             </label>
                         </div>
                         <div class="grid">
@@ -189,11 +222,16 @@
                                 <td>{{ transaction.transaction_date }}</td>
                                 <td>{{ transaction.description }}</td>
                                 <td>
-                                    {% match transaction.account %}
-                                        {% when Some with (account) %}
-                                            {{ account }}
+                                    {% match transaction.account_name %}
+                                        {% when Some with (account_name) %}
+                                            {{ account_name }}
                                         {% when None %}
-                                            <em>-</em>
+                                            {% match transaction.account %}
+                                                {% when Some with (account) %}
+                                                    {{ account }}
+                                                {% when None %}
+                                                    <em>-</em>
+                                            {% endmatch %}
                                     {% endmatch %}
                                 </td>
                                 <td>
@@ -231,7 +269,7 @@
                     <ul style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; list-style: none; padding: 0;">
                         <!-- Previous Button -->
                         {% if pagination.current_page > 1 %}
-                            <li><a href="/dashboard?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account %}{% when Some with (a) %}&account={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" role="button" class="secondary">‹ Previous</a></li>
+                            <li><a href="/dashboard?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" role="button" class="secondary">‹ Previous</a></li>
                         {% else %}
                             <li><a role="button" class="secondary" disabled style="opacity: 0.5; pointer-events: none;">‹ Previous</a></li>
                         {% endif %}
@@ -244,7 +282,7 @@
 
                         <!-- Next Button -->
                         {% if pagination.current_page < pagination.total_pages %}
-                            <li><a href="/dashboard?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account %}{% when Some with (a) %}&account={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" role="button" class="secondary">Next ›</a></li>
+                            <li><a href="/dashboard?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" role="button" class="secondary">Next ›</a></li>
                         {% else %}
                             <li><a role="button" class="secondary" disabled style="opacity: 0.5; pointer-events: none;">Next ›</a></li>
                         {% endif %}
@@ -255,10 +293,10 @@
                 <div style="text-align: center; margin-top: 1rem;">
                     <small>
                         Show: 
-                        <a href="/dashboard?page=1&per_page=10{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account %}{% when Some with (a) %}&account={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 10 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>10</a> |
-                        <a href="/dashboard?page=1&per_page=20{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account %}{% when Some with (a) %}&account={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 20 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>20</a> |
-                        <a href="/dashboard?page=1&per_page=50{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account %}{% when Some with (a) %}&account={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 50 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>50</a> |
-                        <a href="/dashboard?page=1&per_page=100{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account %}{% when Some with (a) %}&account={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 100 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>100</a>
+                        <a href="/dashboard?page=1&per_page=10{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 10 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>10</a> |
+                        <a href="/dashboard?page=1&per_page=20{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 20 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>20</a> |
+                        <a href="/dashboard?page=1&per_page=50{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 50 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>50</a> |
+                        <a href="/dashboard?page=1&per_page=100{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 100 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>100</a>
                         per page
                     </small>
                 </div>

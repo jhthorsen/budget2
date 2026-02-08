@@ -5,9 +5,11 @@ A web-based budget tracking application built with Rust, using the Axum web fram
 ## Features
 
 - **OAuth2 Authentication** - Secure login using OAuth2 (configured for Google by default)
-- **Transaction Tracking** - Track both income and expenses with optional account field
-- **Categories** - Organize transactions with custom categories
+- **Transaction Tracking** - Track both income and expenses
+- **Shared Accounts** - Create accounts (Checking, Savings, Credit Card, etc.) that can be shared between multiple users
+- **Categories** - Organize transactions with custom categories (user-specific)
 - **CSV Import** - Import transactions from CSV files with flexible column mapping
+  - Automatically creates missing categories and accounts
 - **Advanced Filtering** - Filter transactions by:
   - Search text (description)
   - Transaction type (income/expense)
@@ -73,14 +75,19 @@ The database is automatically created and migrated on first run. The SQLite data
 ## Usage
 
 1. **Login** - Click "Login with OAuth" to authenticate
-2. **Add Categories** - Create categories to organize your transactions (optional)
-3. **Add Transactions** - Record income and expenses with descriptions, dates, and optional accounts
-4. **Import CSV** - Bulk import transactions from CSV files:
+2. **Add Accounts** - Create accounts to organize your transactions (e.g., Checking, Savings, Credit Card)
+   - Accounts are shared - multiple users can access the same account
+   - Great for household budgets or shared finances
+3. **Add Categories** - Create categories to organize your transactions (categories are user-specific)
+4. **Add Transactions** - Record income and expenses with descriptions, dates, accounts, and categories
+5. **Import CSV** - Bulk import transactions from CSV files:
    - Click "Import CSV" button on the dashboard
    - Upload your CSV file
    - Map CSV columns to transaction fields
+   - Accounts and categories will be created automatically if they don't exist
    - Review import results showing any errors
-5. **View Dashboard** - See your budget summary and recent transactions
+6. **Filter & Search** - Use the filter form to find specific transactions
+7. **View Dashboard** - See your budget summary and recent transactions
 
 ## Project Structure
 
@@ -101,11 +108,28 @@ budget2/
 │   ├── csv_mapping.html     # Column mapping page
 │   └── csv_result.html      # Import results page
 ├── migrations/
-│   ├── 20240101000000_initial.sql  # Database schema
-│   └── 20240102000000_add_account.sql  # Account field migration
+│   ├── 20240101000000_initial.sql       # Database schema
+│   ├── 20240102000000_add_account.sql   # Account field migration
+│   └── 20240103000000_accounts_table.sql # Accounts table with sharing
 ├── Cargo.toml
 └── .env.example
 ```
+
+## Database Schema
+
+### Key Tables
+- **users** - User accounts from OAuth
+- **accounts** - Shared accounts (Checking, Savings, etc.)
+- **user_accounts** - Many-to-many relationship for account sharing
+- **categories** - User-specific transaction categories
+- **transactions** - Financial transactions linked to users, accounts, and categories
+
+### Account Sharing
+Accounts are designed to be shared between users:
+- When an account is created, it's added to the `accounts` table
+- The creator is automatically linked via `user_accounts` table
+- Other users can be given access to the same account
+- Perfect for couples, families, or roommates sharing finances
 
 ## Development
 

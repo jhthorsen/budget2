@@ -59,6 +59,18 @@
             </article>
             {% endif %}
 
+            {% if !result.accounts_created.is_empty() %}
+            <article>
+                <header><strong>🏦 Accounts Automatically Created</strong></header>
+                <p>The following accounts were created during import:</p>
+                <ul>
+                    {% for account in result.accounts_created %}
+                    <li>{{ account }}</li>
+                    {% endfor %}
+                </ul>
+            </article>
+            {% endif %}
+
             {% if !result.errors.is_empty() %}
             <article>
                 <header><strong>Import Errors</strong></header>

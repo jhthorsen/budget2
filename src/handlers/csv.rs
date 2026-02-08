@@ -273,6 +273,7 @@ async fn import_csv_file(
     let mut successful = 0;
     let mut errors = Vec::new();
     let mut categories_created = std::collections::HashSet::new();
+    let mut accounts_created = std::collections::HashSet::new();
 
     for (row_idx, result) in reader.records().enumerate() {
         let row_number = row_idx + 2;
@@ -280,7 +281,7 @@ async fn import_csv_file(
 
         match result {
             Ok(record) => {
-                match import_row(state, user, &record, &header_map, mapping, &mut categories_created).await {
+                match import_row(state, user, &record, &header_map, mapping, &mut categories_created, &mut accounts_created).await {
                     Ok(_) => successful += 1,
                     Err(e) => {
                         errors.push(ImportError {
@@ -304,12 +305,16 @@ async fn import_csv_file(
     let mut categories_created_vec: Vec<String> = categories_created.into_iter().collect();
     categories_created_vec.sort();
 
+    let mut accounts_created_vec: Vec<String> = accounts_created.into_iter().collect();
+    accounts_created_vec.sort();
+
     Ok(ImportResult {
         total_rows,
         successful,
         failed: errors.len(),
         errors,
         categories_created: categories_created_vec,
+        accounts_created: accounts_created_vec,
     })
 }
 
@@ -320,6 +325,7 @@ async fn import_row(
     header_map: &HashMap<String, usize>,
     mapping: &ColumnMapping,
     categories_created: &mut std::collections::HashSet<String>,
+    accounts_created: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
     let get_field = |col: &str| -> Result<String, String> {
         header_map
@@ -365,7 +371,7 @@ async fn import_row(
     }
 
     // Account: use column value if specified, otherwise use fixed value
-    let account = if let Some(col) = &mapping.account_column {
+    let account_name = if let Some(col) = &mapping.account_column {
         if !col.is_empty() {
             get_field(col).ok()
         } else {
@@ -373,6 +379,53 @@ async fn import_row(
         }
     } else {
         mapping.account_fixed_value.clone()
+    };
+
+    // Handle account (create if needed and get account_id)
+    let account_id = if let Some(acc_name) = &account_name {
+        let acc_name = acc_name.trim();
+        if !acc_name.is_empty() {
+            // Check if account exists
+            let existing = sqlx::query_scalar::<_, i64>(
+                "SELECT id FROM accounts WHERE name = ?",
+            )
+            .bind(acc_name)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|e| format!("Database error: {}", e))?;
+
+            let acc_id = if let Some(id) = existing {
+                id
+            } else {
+                // Create new account
+                let result = sqlx::query(
+                    "INSERT INTO accounts (name) VALUES (?)",
+                )
+                .bind(acc_name)
+                .execute(&state.pool)
+                .await
+                .map_err(|e| format!("Failed to create account '{}': {}", acc_name, e))?;
+
+                accounts_created.insert(acc_name.to_string());
+                result.last_insert_rowid()
+            };
+
+            // Ensure user has access to this account
+            sqlx::query(
+                "INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)",
+            )
+            .bind(user.id)
+            .bind(acc_id)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| format!("Failed to link account: {}", e))?;
+
+            Some(acc_id)
+        } else {
+            None
+        }
+    } else {
+        None
     };
 
     let category_id = if let Some(cat_col) = &mapping.category_column {
@@ -421,17 +474,18 @@ async fn import_row(
 
     sqlx::query(
         r#"
-        INSERT INTO transactions (user_id, category_id, amount, description, transaction_date, type, account)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO transactions (user_id, category_id, account_id, amount, description, transaction_date, type, account)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(user.id)
     .bind(category_id)
+    .bind(account_id)
     .bind(amount)
     .bind(&description)
     .bind(&transaction_date)
     .bind(&transaction_type)
-    .bind(&account)
+    .bind(&account_name)
     .execute(&state.pool)
     .await
     .map_err(|e| format!("Database error: {}", e))?;

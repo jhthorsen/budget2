@@ -12,6 +12,14 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct Account {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Category {
     pub id: i64,
     pub user_id: i64,
@@ -25,6 +33,7 @@ pub struct Transaction {
     pub id: i64,
     pub user_id: i64,
     pub category_id: Option<i64>,
+    pub account_id: Option<i64>,
     pub amount: f64,
     pub description: String,
     pub transaction_date: String,
@@ -43,12 +52,19 @@ pub struct NewCategory {
 #[derive(Debug, Deserialize)]
 pub struct NewTransaction {
     pub category_id: Option<i64>,
+    pub account_id: Option<i64>,
     pub amount: f64,
     pub description: String,
     pub transaction_date: String,
     #[serde(rename = "type")]
     pub transaction_type: String,
     pub account: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewAccount {
+    pub name: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize)]
@@ -59,6 +75,8 @@ pub struct TransactionWithCategory {
     pub transaction_date: String,
     pub transaction_type: String,
     pub account: Option<String>,
+    pub account_id: Option<i64>,
+    pub account_name: Option<String>,
     pub category_name: Option<String>,
     pub category_color: Option<String>,
 }
@@ -105,6 +123,7 @@ pub struct ImportResult {
     pub failed: usize,
     pub errors: Vec<ImportError>,
     pub categories_created: Vec<String>,
+    pub accounts_created: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
