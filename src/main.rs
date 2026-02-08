@@ -1,6 +1,7 @@
 mod auth;
 mod handlers;
 mod models;
+mod filters;
 
 use anyhow::Result;
 use auth::{auth_callback, create_oauth_client, login_handler, logout_handler, AppState};

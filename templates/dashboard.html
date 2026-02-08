@@ -35,15 +35,15 @@
                 <div class="grid">
                     <div>
                         <h6>Total Income</h6>
-                        <p style="color: green; font-size: 1.5em;">${{ summary.total_income }}</p>
+                        <p style="color: green; font-size: 1.5em;">{{ summary.total_income|format_amount }}</p>
                     </div>
                     <div>
                         <h6>Total Expenses</h6>
-                        <p style="color: red; font-size: 1.5em;">${{ summary.total_expenses }}</p>
+                        <p style="color: red; font-size: 1.5em;">{{ summary.total_expenses|format_amount }}</p>
                     </div>
                     <div>
                         <h6>Balance</h6>
-                        <p style="font-size: 1.5em; {% if summary.balance >= 0.0 %}color: green;{% else %}color: red;{% endif %}">${{ summary.balance }}</p>
+                        <p style="font-size: 1.5em; {% if summary.balance >= 0.0 %}color: green;{% else %}color: red;{% endif %}">{{ summary.balance|format_amount }}</p>
                     </div>
                 </div>
             </article>
@@ -300,7 +300,7 @@
                                     {% endif %}
                                 </td>
                                 <td style="text-align: right; {% if transaction.transaction_type == "income" %}color: green;{% else %}color: red;{% endif %}">
-                                    {% if transaction.transaction_type == "income" %}+{% else %}-{% endif %}${{ transaction.amount }}
+                                    {% if transaction.transaction_type == "income" %}+{% else %}-{% endif %}{{ transaction.amount|format_amount }}
                                 </td>
                             </tr>
                             {% endfor %}
