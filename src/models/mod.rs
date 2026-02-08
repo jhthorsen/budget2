@@ -142,6 +142,7 @@ pub struct ImportResult {
     pub total_rows: usize,
     pub successful: usize,
     pub failed: usize,
+    pub skipped: usize,
     pub errors: Vec<ImportError>,
     pub categories_created: Vec<String>,
     pub accounts_created: Vec<String>,

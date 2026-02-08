@@ -271,6 +271,7 @@ async fn import_csv_file(
 
     let mut total_rows = 0;
     let mut successful = 0;
+    let mut skipped = 0;
     let mut errors = Vec::new();
     let mut categories_created = std::collections::HashSet::new();
     let mut accounts_created = std::collections::HashSet::new();
@@ -282,7 +283,13 @@ async fn import_csv_file(
         match result {
             Ok(record) => {
                 match import_row(state, user, &record, &header_map, mapping, &mut categories_created, &mut accounts_created).await {
-                    Ok(_) => successful += 1,
+                    Ok(imported) => {
+                        if imported {
+                            successful += 1;
+                        } else {
+                            skipped += 1;
+                        }
+                    }
                     Err(e) => {
                         errors.push(ImportError {
                             row_number,
@@ -312,6 +319,7 @@ async fn import_csv_file(
         total_rows,
         successful,
         failed: errors.len(),
+        skipped,
         errors,
         categories_created: categories_created_vec,
         accounts_created: accounts_created_vec,
@@ -326,7 +334,7 @@ async fn import_row(
     mapping: &ColumnMapping,
     categories_created: &mut std::collections::HashSet<String>,
     accounts_created: &mut std::collections::HashSet<String>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let get_field = |col: &str| -> Result<String, String> {
         header_map
             .get(col)
@@ -477,6 +485,25 @@ async fn import_row(
         None
     };
 
+    // Check for duplicate transaction (same date, amount, and description)
+    let duplicate_exists = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*) FROM transactions 
+        WHERE user_id = ? AND transaction_date = ? AND amount = ? AND description = ?
+        "#,
+    )
+    .bind(user.id)
+    .bind(&transaction_date)
+    .bind(amount)
+    .bind(&description)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| format!("Database error checking duplicates: {}", e))?;
+
+    if duplicate_exists > 0 {
+        return Ok(false); // Skipped duplicate
+    }
+
     sqlx::query(
         r#"
         INSERT INTO transactions (user_id, category_id, account_id, amount, description, transaction_date, type, account)
@@ -495,7 +522,7 @@ async fn import_row(
     .await
     .map_err(|e| format!("Database error: {}", e))?;
 
-    Ok(())
+    Ok(true) // Successfully imported
 }
 
 fn normalize_date(date_str: &str) -> Result<String, String> {

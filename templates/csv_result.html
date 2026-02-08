@@ -41,6 +41,10 @@
                         <p style="color: green; font-size: 1.5em;">{{ result.successful }}</p>
                     </div>
                     <div>
+                        <h6>Skipped (Duplicates)</h6>
+                        <p style="{% if result.skipped > 0 %}color: orange;{% endif %} font-size: 1.5em;">{{ result.skipped }}</p>
+                    </div>
+                    <div>
                         <h6>Failed</h6>
                         <p style="{% if result.failed > 0 %}color: red;{% endif %} font-size: 1.5em;">{{ result.failed }}</p>
                     </div>
