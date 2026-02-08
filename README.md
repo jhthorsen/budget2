@@ -8,6 +8,12 @@ A web-based budget tracking application built with Rust, using the Axum web fram
 - **Transaction Tracking** - Track both income and expenses with optional account field
 - **Categories** - Organize transactions with custom categories
 - **CSV Import** - Import transactions from CSV files with flexible column mapping
+- **Advanced Filtering** - Filter transactions by:
+  - Search text (description)
+  - Transaction type (income/expense)
+  - Category
+  - Account
+  - Date range (from/to)
 - **Pagination** - Navigate through transactions with customizable page size (10, 20, 50, or 100 per page)
 - **Budget Summary** - View total income, expenses, and balance at a glance
 - **Modern UI** - Clean interface using Pico CSS

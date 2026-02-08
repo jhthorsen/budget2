@@ -6,7 +6,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tower_sessions::Session;
 
@@ -23,12 +23,56 @@ pub struct PaginationParams {
     pub per_page: i64,
 }
 
+#[derive(Debug, Deserialize, Clone, Serialize)]
+pub struct TransactionFilters {
+    #[serde(default = "default_page")]
+    pub page: i64,
+    #[serde(default = "default_per_page")]
+    pub per_page: i64,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub search: Option<String>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub transaction_type: Option<String>,
+    #[serde(default, deserialize_with = "empty_string_as_none_i64")]
+    pub category_id: Option<i64>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub account: Option<String>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub date_from: Option<String>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub date_to: Option<String>,
+}
+
 fn default_page() -> i64 {
     1
 }
 
 fn default_per_page() -> i64 {
-    100
+    20
+}
+
+fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if s.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(s))
+    }
+}
+
+fn empty_string_as_none_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if s.trim().is_empty() {
+        Ok(None)
+    } else {
+        s.parse::<i64>().map(Some).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Template)]
@@ -45,6 +89,7 @@ struct DashboardTemplate {
     categories: Vec<Category>,
     summary: BudgetSummary,
     pagination: PaginationInfo,
+    filters: TransactionFilters,
 }
 
 pub async fn index_handler(
@@ -75,7 +120,7 @@ pub async fn index_handler(
 pub async fn dashboard_handler(
     State(state): State<AppState>,
     session: Session,
-    Query(params): Query<PaginationParams>,
+    Query(filters): Query<TransactionFilters>,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool).await;
 
@@ -84,18 +129,63 @@ pub async fn dashboard_handler(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
-    let page = params.page.max(1);
-    let per_page = params.per_page.clamp(10, 100);
+    let page = filters.page.max(1);
+    let per_page = filters.per_page.clamp(10, 100);
     let offset = (page - 1) * per_page;
 
+    // Build dynamic WHERE clause
+    let mut where_clauses = vec!["t.user_id = ?".to_string()];
+    let mut params: Vec<String> = vec![user.id.to_string()];
+
+    if let Some(ref search) = filters.search {
+        if !search.trim().is_empty() {
+            where_clauses.push("t.description LIKE ?".to_string());
+            params.push(format!("%{}%", search));
+        }
+    }
+
+    if let Some(ref trans_type) = filters.transaction_type {
+        if !trans_type.is_empty() && trans_type != "all" {
+            where_clauses.push("t.type = ?".to_string());
+            params.push(trans_type.clone());
+        }
+    }
+
+    if let Some(cat_id) = filters.category_id {
+        where_clauses.push("t.category_id = ?".to_string());
+        params.push(cat_id.to_string());
+    }
+
+    if let Some(ref account) = filters.account {
+        if !account.trim().is_empty() {
+            where_clauses.push("t.account = ?".to_string());
+            params.push(account.clone());
+        }
+    }
+
+    if let Some(ref date_from) = filters.date_from {
+        if !date_from.trim().is_empty() {
+            where_clauses.push("t.transaction_date >= ?".to_string());
+            params.push(date_from.clone());
+        }
+    }
+
+    if let Some(ref date_to) = filters.date_to {
+        if !date_to.trim().is_empty() {
+            where_clauses.push("t.transaction_date <= ?".to_string());
+            params.push(date_to.clone());
+        }
+    }
+
+    let where_clause = where_clauses.join(" AND ");
+
     // Get total count for pagination
-    let total_items: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM transactions WHERE user_id = ?"
-    )
-    .bind(user.id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| {
+    let count_query = format!("SELECT COUNT(*) FROM transactions t WHERE {}", where_clause);
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_query);
+    for param in &params {
+        count_query = count_query.bind(param);
+    }
+    let total_items = count_query.fetch_one(&state.pool).await.map_err(|e| {
         tracing::error!("Database error: {}", e);
         (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -106,7 +196,8 @@ pub async fn dashboard_handler(
 
     let total_pages = (total_items + per_page - 1) / per_page;
 
-    let transactions = sqlx::query_as::<_, TransactionWithCategory>(
+    // Get transactions
+    let select_query = format!(
         r#"
         SELECT 
             t.id,
@@ -119,24 +210,30 @@ pub async fn dashboard_handler(
             c.color as category_color
         FROM transactions t
         LEFT JOIN categories c ON t.category_id = c.id
-        WHERE t.user_id = ?
+        WHERE {}
         ORDER BY t.transaction_date DESC, t.created_at DESC
         LIMIT ? OFFSET ?
         "#,
-    )
-    .bind(user.id)
-    .bind(per_page)
-    .bind(offset)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+        where_clause
+    );
+
+    let mut query = sqlx::query_as::<_, TransactionWithCategory>(&select_query);
+    for param in &params {
+        query = query.bind(param);
+    }
+    let transactions = query
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error",
+            )
+                .into_response()
+        })?;
 
     let categories = sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
         .bind(user.id)
@@ -173,6 +270,7 @@ pub async fn dashboard_handler(
         categories,
         summary,
         pagination,
+        filters,
     };
 
     template
