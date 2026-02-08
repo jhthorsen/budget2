@@ -13,12 +13,20 @@ use tower_sessions::Session;
 
 use crate::models::User;
 
+#[derive(Debug, Deserialize)]
+struct OidcDiscovery {
+    authorization_endpoint: String,
+    token_endpoint: String,
+    userinfo_endpoint: String,
+}
+
 const SESSION_USER_KEY: &str = "user_id";
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
     pub oauth_client: BasicClient,
+    pub userinfo_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,20 +37,31 @@ pub struct OAuthUserInfo {
     pub id: String,
 }
 
-pub fn create_oauth_client() -> Result<BasicClient> {
+pub async fn create_oauth_client() -> Result<(BasicClient, String)> {
     let client_id = std::env::var("OAUTH_CLIENT_ID")?;
     let client_secret = std::env::var("OAUTH_CLIENT_SECRET")?;
-    let auth_url = std::env::var("OAUTH_AUTH_URL")?;
-    let token_url = std::env::var("OAUTH_TOKEN_URL")?;
     let redirect_url = std::env::var("OAUTH_REDIRECT_URL")?;
+    let discovery_url = std::env::var("OAUTH_DISCOVERY_URL")
+        .unwrap_or_else(|_| "https://accounts.google.com/.well-known/openid-configuration".to_string());
 
-    Ok(BasicClient::new(
+    // Fetch OIDC discovery document
+    let client = reqwest::Client::new();
+    let discovery: OidcDiscovery = client
+        .get(&discovery_url)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    let oauth_client = BasicClient::new(
         ClientId::new(client_id),
         Some(ClientSecret::new(client_secret)),
-        AuthUrl::new(auth_url)?,
-        Some(TokenUrl::new(token_url)?),
+        AuthUrl::new(discovery.authorization_endpoint)?,
+        Some(TokenUrl::new(discovery.token_endpoint)?),
     )
-    .set_redirect_uri(RedirectUrl::new(redirect_url)?))
+    .set_redirect_uri(RedirectUrl::new(redirect_url)?);
+
+    Ok((oauth_client, discovery.userinfo_endpoint))
 }
 
 pub async fn login_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -76,12 +95,9 @@ pub async fn auth_callback(
         .await
         .map_err(|e| format!("Failed to get token: {}", e))?;
 
-    let user_info_url = std::env::var("OAUTH_USERINFO_URL")
-        .unwrap_or_else(|_| "https://www.googleapis.com/oauth2/v2/userinfo".to_string());
-
     let client = reqwest::Client::new();
     let user_info: OAuthUserInfo = client
-        .get(&user_info_url)
+        .get(&state.userinfo_url)
         .bearer_auth(token.access_token().secret())
         .send()
         .await

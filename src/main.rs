@@ -51,11 +51,12 @@ async fn main() -> Result<()> {
         .with_secure(false) // Set to true in production with HTTPS
         .with_expiry(Expiry::OnInactivity(time::Duration::days(7)));
 
-    let oauth_client = create_oauth_client()?;
+    let (oauth_client, userinfo_url) = create_oauth_client().await?;
 
     let state = AppState {
         pool: pool.clone(),
         oauth_client,
+        userinfo_url,
     };
 
     let app = Router::new()

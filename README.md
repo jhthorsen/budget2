@@ -52,6 +52,8 @@ A web-based budget tracking application built with Rust, using the Axum web fram
 
 3. **Configure OAuth2**
    
+   The app uses OpenID Connect Discovery for automatic OAuth configuration.
+   
    For Google OAuth:
    - Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    - Create a new OAuth 2.0 Client ID
@@ -62,6 +64,12 @@ A web-based budget tracking application built with Rust, using the Axum web fram
    ```
    OAUTH_CLIENT_ID=your_actual_client_id
    OAUTH_CLIENT_SECRET=your_actual_client_secret
+   OAUTH_REDIRECT_URL=http://localhost:3000/auth/callback
+   ```
+
+   For other providers (Microsoft, GitHub, etc.), add the discovery URL:
+   ```
+   OAUTH_DISCOVERY_URL=https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration
    ```
 
 4. **Build and run**
@@ -162,10 +170,13 @@ cargo clippy
 - `DATABASE_URL` - SQLite database path (default: `sqlite:budget.db`)
 - `OAUTH_CLIENT_ID` - OAuth2 client ID
 - `OAUTH_CLIENT_SECRET` - OAuth2 client secret
-- `OAUTH_AUTH_URL` - OAuth2 authorization URL
-- `OAUTH_TOKEN_URL` - OAuth2 token URL
-- `OAUTH_REDIRECT_URL` - OAuth2 redirect URL
-- `OAUTH_USERINFO_URL` - OAuth2 user info endpoint
+- `OAUTH_REDIRECT_URL` - OAuth2 redirect URL (e.g., `http://localhost:3000/auth/callback`)
+- `OAUTH_DISCOVERY_URL` - (Optional) OIDC discovery URL. Defaults to Google's discovery endpoint.
+  - Google: `https://accounts.google.com/.well-known/openid-configuration` (default)
+  - Microsoft: `https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration`
+  - GitHub: `https://token.actions.githubusercontent.com/.well-known/openid-configuration`
+
+The app automatically fetches authorization, token, and userinfo endpoints from the discovery URL, so you don't need to configure them separately.
 
 ## CSV Import Format
 
