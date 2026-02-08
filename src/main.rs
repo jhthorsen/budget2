@@ -9,7 +9,8 @@ use axum::{
     Router,
 };
 use handlers::{
-    create_category_handler, create_transaction_handler, create_account_handler, dashboard_handler, index_handler,
+    create_category_handler, create_transaction_handler, create_account_handler, 
+    toggle_account_ownership_handler, dashboard_handler, index_handler,
     csv::{csv_upload_page, csv_upload_handler, csv_import_handler},
 };
 use sqlx::sqlite::SqlitePoolOptions;
@@ -65,6 +66,7 @@ async fn main() -> Result<()> {
         .route("/transactions", post(create_transaction_handler))
         .route("/categories", post(create_category_handler))
         .route("/accounts", post(create_account_handler))
+        .route("/accounts/toggle-ownership", post(toggle_account_ownership_handler))
         .route("/import", get(csv_upload_page))
         .route("/import/upload", post(csv_upload_handler))
         .route("/import/process", post(csv_import_handler))

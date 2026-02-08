@@ -7,6 +7,8 @@ A web-based budget tracking application built with Rust, using the Axum web fram
 - **OAuth2 Authentication** - Secure login using OAuth2 (configured for Google by default)
 - **Transaction Tracking** - Track both income and expenses
 - **Shared Accounts** - Create accounts (Checking, Savings, Credit Card, etc.) that can be shared between multiple users
+  - Mark accounts as "Mine" or "Not Mine" to control balance calculations
+  - Perfect for household budgets where some accounts are shared but not owned by everyone
 - **Categories** - Organize transactions with custom categories (user-specific)
 - **CSV Import** - Import transactions from CSV files with flexible column mapping
   - Automatically creates missing categories and accounts
@@ -17,7 +19,9 @@ A web-based budget tracking application built with Rust, using the Axum web fram
   - Account
   - Date range (from/to)
 - **Pagination** - Navigate through transactions with customizable page size (10, 20, 50, or 100 per page)
-- **Budget Summary** - View total income, expenses, and balance at a glance
+- **Smart Budget Summary** - View total income, expenses, and balance
+  - Only includes transactions from accounts marked as "Mine"
+  - Allows accurate personal balance even when sharing accounts
 - **Modern UI** - Clean interface using Pico CSS
 - **No JavaScript Framework** - Simple HTML forms and plain HTTP requests
 
@@ -77,7 +81,9 @@ The database is automatically created and migrated on first run. The SQLite data
 1. **Login** - Click "Login with OAuth" to authenticate
 2. **Add Accounts** - Create accounts to organize your transactions (e.g., Checking, Savings, Credit Card)
    - Accounts are shared - multiple users can access the same account
-   - Great for household budgets or shared finances
+   - Mark accounts as "Mine" or "Not Mine" in the "Manage Accounts" section
+   - Your balance only includes transactions from accounts marked as "Mine"
+   - Great for household budgets where some accounts are shared but not owned by everyone
 3. **Add Categories** - Create categories to organize your transactions (categories are user-specific)
 4. **Add Transactions** - Record income and expenses with descriptions, dates, accounts, and categories
 5. **Import CSV** - Bulk import transactions from CSV files:
@@ -85,9 +91,10 @@ The database is automatically created and migrated on first run. The SQLite data
    - Upload your CSV file
    - Map CSV columns to transaction fields
    - Accounts and categories will be created automatically if they don't exist
+   - Newly created accounts are marked as "Mine" by default
    - Review import results showing any errors
 6. **Filter & Search** - Use the filter form to find specific transactions
-7. **View Dashboard** - See your budget summary and recent transactions
+7. **View Dashboard** - See your budget summary (only "Mine" accounts) and recent transactions
 
 ## Project Structure
 
@@ -110,7 +117,8 @@ budget2/
 ├── migrations/
 │   ├── 20240101000000_initial.sql       # Database schema
 │   ├── 20240102000000_add_account.sql   # Account field migration
-│   └── 20240103000000_accounts_table.sql # Accounts table with sharing
+│   ├── 20240103000000_accounts_table.sql # Accounts table with sharing
+│   └── 20240104000000_add_is_mine.sql   # Account ownership marking
 ├── Cargo.toml
 └── .env.example
 ```
@@ -127,9 +135,14 @@ budget2/
 ### Account Sharing
 Accounts are designed to be shared between users:
 - When an account is created, it's added to the `accounts` table
-- The creator is automatically linked via `user_accounts` table
+- The creator is automatically linked via `user_accounts` table with `is_mine = 1`
 - Other users can be given access to the same account
-- Perfect for couples, families, or roommates sharing finances
+- Each user can mark accounts as "Mine" (included in balance) or "Not Mine" (excluded from balance)
+- Perfect for scenarios like:
+  - **Couples**: Shared checking account, but each person has their own savings
+  - **Roommates**: Shared utilities account, but personal credit cards
+  - **Families**: Parents can see children's accounts but exclude them from their own balance
+  - **Business**: Shared company account, but personal expense accounts
 
 ## Development
 

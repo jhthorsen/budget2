@@ -30,7 +30,8 @@
             
             <!-- Budget Summary -->
             <article>
-                <header><strong>Budget Summary</strong></header>
+                <header><strong>My Budget Summary</strong></header>
+                <p><small>Only includes transactions from accounts marked as "Mine"</small></p>
                 <div class="grid">
                     <div>
                         <h6>Total Income</h6>
@@ -127,6 +128,50 @@
                         </label>
                         <button type="submit">Add Category</button>
                     </form>
+                </article>
+            </details>
+
+            <!-- Manage Accounts -->
+            <details>
+                <summary role="button" class="secondary">Manage Accounts</summary>
+                <article>
+                    <header><strong>Your Accounts</strong></header>
+                    <p><small>Toggle accounts as "Mine" to include them in your balance calculation. Unchecked accounts (shared accounts you don't own) won't affect your balance.</small></p>
+                    
+                    {% if accounts.is_empty() %}
+                        <p>No accounts yet. Add your first account using the form above!</p>
+                    {% else %}
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Account Name</th>
+                                    <th>Description</th>
+                                    <th>Include in Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for account in accounts %}
+                                <tr>
+                                    <td><strong>{{ account.name }}</strong></td>
+                                    <td>
+                                        {% match account.description %}
+                                            {% when Some with (desc) %}{{ desc }}{% when None %}<em>-</em>
+                                        {% endmatch %}
+                                    </td>
+                                    <td>
+                                        <form action="/accounts/toggle-ownership" method="post" style="margin: 0;">
+                                            <input type="hidden" name="account_id" value="{{ account.id }}">
+                                            <input type="hidden" name="is_mine" value="{% if account.is_mine %}false{% else %}true{% endif %}">
+                                            <button type="submit" class="{% if account.is_mine %}contrast{% else %}secondary{% endif %}" style="padding: 0.25rem 0.5rem;">
+                                                {% if account.is_mine %}✓ Mine{% else %}Not Mine{% endif %}
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% endif %}
                 </article>
             </details>
 

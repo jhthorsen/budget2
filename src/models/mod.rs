@@ -19,6 +19,22 @@ pub struct Account {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct UserAccount {
+    pub user_id: i64,
+    pub account_id: i64,
+    pub is_mine: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct AccountWithOwnership {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_mine: bool,
+}
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Category {
     pub id: i64,
@@ -65,6 +81,12 @@ pub struct NewTransaction {
 pub struct NewAccount {
     pub name: String,
     pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToggleAccountOwnership {
+    pub account_id: i64,
+    pub is_mine: bool,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize)]

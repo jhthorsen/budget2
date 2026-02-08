@@ -89,7 +89,7 @@ struct DashboardTemplate {
     user: User,
     transactions: Vec<TransactionWithCategory>,
     categories: Vec<Category>,
-    accounts: Vec<Account>,
+    accounts: Vec<AccountWithOwnership>,
     summary: BudgetSummary,
     pagination: PaginationInfo,
     filters: TransactionFilters,
@@ -260,10 +260,11 @@ pub async fn dashboard_handler(
                 .into_response()
         })?;
 
-    // Get accounts accessible to this user
-    let accounts = sqlx::query_as::<_, Account>(
+    // Get accounts accessible to this user with ownership status
+    let accounts = sqlx::query_as::<_, AccountWithOwnership>(
         r#"
-        SELECT a.* FROM accounts a
+        SELECT a.id, a.name, a.description, ua.is_mine
+        FROM accounts a
         INNER JOIN user_accounts ua ON a.id = ua.account_id
         WHERE ua.user_id = ?
         ORDER BY a.name
@@ -452,6 +453,35 @@ pub async fn create_account_handler(
     Ok(Redirect::to("/dashboard"))
 }
 
+pub async fn toggle_account_ownership_handler(
+    State(state): State<AppState>,
+    session: Session,
+    Form(toggle): Form<ToggleAccountOwnership>,
+) -> Result<Redirect, Response> {
+    let user = get_current_user(&session, &state.pool)
+        .await
+        .ok_or_else(|| Redirect::to("/").into_response())?;
+
+    sqlx::query(
+        "UPDATE user_accounts SET is_mine = ? WHERE user_id = ? AND account_id = ?",
+    )
+    .bind(toggle.is_mine)
+    .bind(user.id)
+    .bind(toggle.account_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error",
+        )
+            .into_response()
+    })?;
+
+    Ok(Redirect::to("/dashboard"))
+}
+
 async fn calculate_summary(pool: &SqlitePool, user_id: i64) -> Result<BudgetSummary, sqlx::Error> {
     #[derive(sqlx::FromRow)]
     struct SummaryRow {
@@ -462,12 +492,15 @@ async fn calculate_summary(pool: &SqlitePool, user_id: i64) -> Result<BudgetSumm
     let result = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT 
-            CAST(COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0.0) AS REAL) as total_income,
-            CAST(COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0.0) AS REAL) as total_expenses
-        FROM transactions
-        WHERE user_id = ?
+            CAST(COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_income,
+            CAST(COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_expenses
+        FROM transactions t
+        LEFT JOIN user_accounts ua ON t.account_id = ua.account_id AND ua.user_id = ?
+        WHERE t.user_id = ? 
+          AND (t.account_id IS NULL OR ua.is_mine = 1)
         "#,
     )
+    .bind(user_id)
     .bind(user_id)
     .fetch_one(pool)
     .await?;
