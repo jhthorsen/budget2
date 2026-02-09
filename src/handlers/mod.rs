@@ -35,8 +35,8 @@ pub struct TransactionFilters {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub transaction_type: Option<String>,
-    #[serde(default, deserialize_with = "empty_string_as_none_i64")]
-    pub category_id: Option<i64>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub category_id: Option<String>,
     #[serde(default, deserialize_with = "empty_string_as_none_i64")]
     pub account_id: Option<i64>,
     #[serde(default, deserialize_with = "empty_string_as_none")]
@@ -156,9 +156,13 @@ pub async fn dashboard_handler(
         }
     }
 
-    if let Some(cat_id) = filters.category_id {
-        where_clauses.push("t.category_id = ?".to_string());
-        params.push(cat_id.to_string());
+    if let Some(ref cat_id) = filters.category_id {
+        if cat_id == "no_category" {
+            where_clauses.push("t.category_id IS NULL".to_string());
+        } else {
+            where_clauses.push("t.category_id = ?".to_string());
+            params.push(cat_id.to_string());
+        }
     }
 
     if let Some(acc_id) = filters.account_id {

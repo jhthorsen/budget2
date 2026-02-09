@@ -204,6 +204,7 @@
                                 Category
                                 <select name="category_id" id="category_filter">
                                     <option value="">All Categories</option>
+                                    <option value="no_category">No Category</option>
                                     {% for category in categories %}
                                     <option value="{{ category.id }}">{{ category.name }}</option>
                                     {% endfor %}

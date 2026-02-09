@@ -115,7 +115,10 @@ pub async fn rules_list(
         });
     }
 
-    let template = RulesListTemplate { user, grouped_rules };
+    let template = RulesListTemplate { 
+        user, 
+        grouped_rules,
+    };
     template
         .render()
         .map(Html)
