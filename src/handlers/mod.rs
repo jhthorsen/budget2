@@ -378,14 +378,15 @@ pub async fn create_transaction_handler(
 
     sqlx::query(
         r#"
-        INSERT INTO transactions (user_id, category_id, account_id, amount, description, transaction_date, type, account)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO transactions (user_id, category_id, account_id, amount, original_amount, description, transaction_date, type, account)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(user.id)
     .bind(new_transaction.category_id)
     .bind(new_transaction.account_id)
     .bind(new_transaction.amount)
+    .bind(new_transaction.amount)  // For manual entry, original_amount = amount
     .bind(&new_transaction.description)
     .bind(&new_transaction.transaction_date)
     .bind(&new_transaction.transaction_type)

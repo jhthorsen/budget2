@@ -347,12 +347,20 @@ async fn import_row(
     let transaction_date = normalize_date(&date_str)?;
 
     let amount_str = get_field(&mapping.amount_column)?;
-    let amount: f64 = amount_str
+    let original_amount: f64 = amount_str
         .trim()
         .replace(",", "")
         .replace("$", "")
         .parse()
         .map_err(|_| format!("Invalid amount: {}", amount_str))?;
+
+    // Apply multiplier if specified
+    let multiplier = mapping.amount_multiplier
+        .as_ref()
+        .and_then(|m| m.parse::<f64>().ok())
+        .unwrap_or(1.0);
+    
+    let amount = original_amount * multiplier;
 
     let description = get_field(&mapping.description_column)?;
     
@@ -533,14 +541,15 @@ async fn import_row(
 
     sqlx::query(
         r#"
-        INSERT INTO transactions (user_id, category_id, account_id, amount, description, transaction_date, type, account)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO transactions (user_id, category_id, account_id, amount, original_amount, description, transaction_date, type, account)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(user.id)
     .bind(final_category_id)
     .bind(final_account_id)
     .bind(amount)
+    .bind(original_amount)
     .bind(&description)
     .bind(&transaction_date)
     .bind(&transaction_type)

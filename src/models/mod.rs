@@ -51,6 +51,7 @@ pub struct Transaction {
     pub category_id: Option<i64>,
     pub account_id: Option<i64>,
     pub amount: f64,
+    pub original_amount: Option<f64>,
     pub description: String,
     pub transaction_date: String,
     #[sqlx(rename = "type")]
@@ -131,6 +132,7 @@ pub struct ColumnMapping {
     pub file_id: String,
     pub date_column: String,
     pub amount_column: String,
+    pub amount_multiplier: Option<String>,
     pub description_column: String,
     pub type_fixed_value: String,
     pub account_column: Option<String>,
