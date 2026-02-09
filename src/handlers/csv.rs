@@ -11,10 +11,7 @@ use std::path::PathBuf;
 use tower_sessions::Session;
 use uuid::Uuid;
 
-use crate::{
-    auth::{get_current_user, AppState},
-    models::*,
-};
+use crate::{auth::get_current_user, models::*, AppState};
 
 const CSV_SESSION_KEY: &str = "csv_upload";
 
@@ -78,11 +75,7 @@ pub async fn csv_upload_handler(
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         tracing::error!("Multipart error: {}", e);
-        (
-            axum::http::StatusCode::BAD_REQUEST,
-            "Failed to read upload",
-        )
-            .into_response()
+        (axum::http::StatusCode::BAD_REQUEST, "Failed to read upload").into_response()
     })? {
         if field.name() == Some("csv_file") {
             let data = field.bytes().await.map_err(|e| {
@@ -168,11 +161,7 @@ pub async fn csv_upload_handler(
         }
     }
 
-    Err((
-        axum::http::StatusCode::BAD_REQUEST,
-        "No file uploaded",
-    )
-        .into_response())
+    Err((axum::http::StatusCode::BAD_REQUEST, "No file uploaded").into_response())
 }
 
 pub async fn csv_import_handler(
@@ -204,18 +193,17 @@ pub async fn csv_import_handler(
         })?;
 
     if csv_session.file_id != mapping.file_id {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            "File ID mismatch",
-        )
-            .into_response());
+        return Err((axum::http::StatusCode::BAD_REQUEST, "File ID mismatch").into_response());
     }
 
     let file_path = PathBuf::from(&csv_session.file_path);
     let result = import_csv_file(&state, &user, &file_path, &mapping).await;
 
     fs::remove_file(&file_path).ok();
-    session.remove::<CsvUploadSession>(CSV_SESSION_KEY).await.ok();
+    session
+        .remove::<CsvUploadSession>(CSV_SESSION_KEY)
+        .await
+        .ok();
 
     let result = result.map_err(|e| {
         tracing::error!("Import error: {}", e);
@@ -282,7 +270,17 @@ async fn import_csv_file(
 
         match result {
             Ok(record) => {
-                match import_row(state, user, &record, &header_map, mapping, &mut categories_created, &mut accounts_created).await {
+                match import_row(
+                    state,
+                    user,
+                    &record,
+                    &header_map,
+                    mapping,
+                    &mut categories_created,
+                    &mut accounts_created,
+                )
+                .await
+                {
                     Ok(imported) => {
                         if imported {
                             successful += 1;
@@ -355,25 +353,26 @@ async fn import_row(
         .map_err(|_| format!("Invalid amount: {}", amount_str))?;
 
     // Apply multiplier if specified
-    let multiplier = mapping.amount_multiplier
+    let multiplier = mapping
+        .amount_multiplier
         .as_ref()
         .and_then(|m| m.parse::<f64>().ok())
         .unwrap_or(1.0);
-    
+
     let amount = original_amount * multiplier;
 
     let description = get_field(&mapping.description_column)?;
-    
+
     // Determine transaction type based on amount sign and fixed type value
     let fixed_type = mapping.type_fixed_value.to_lowercase().trim().to_string();
-    
+
     if fixed_type != "income" && fixed_type != "expense" {
         return Err(format!(
             "Invalid transaction type: {}. Must be 'income' or 'expense'",
             fixed_type
         ));
     }
-    
+
     // Logic: If fixed type is "income", negative amounts are expenses and positive are income
     //        If fixed type is "expense", negative amounts are income and positive are expenses
     let transaction_type = if fixed_type == "income" {
@@ -389,7 +388,8 @@ async fn import_row(
         } else {
             "expense"
         }
-    }.to_string();
+    }
+    .to_string();
 
     // Account: use column value if specified, otherwise use fixed value
     let account_name = if let Some(col) = &mapping.account_column {
@@ -407,39 +407,33 @@ async fn import_row(
         let acc_name = acc_name.trim();
         if !acc_name.is_empty() {
             // Check if account exists
-            let existing = sqlx::query_scalar::<_, i64>(
-                "SELECT id FROM accounts WHERE name = ?",
-            )
-            .bind(acc_name)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(|e| format!("Database error: {}", e))?;
+            let existing = sqlx::query_scalar::<_, i64>("SELECT id FROM accounts WHERE name = ?")
+                .bind(acc_name)
+                .fetch_optional(&state.pool)
+                .await
+                .map_err(|e| format!("Database error: {}", e))?;
 
             let acc_id = if let Some(id) = existing {
                 id
             } else {
                 // Create new account
-                let result = sqlx::query(
-                    "INSERT INTO accounts (name) VALUES (?)",
-                )
-                .bind(acc_name)
-                .execute(&state.pool)
-                .await
-                .map_err(|e| format!("Failed to create account '{}': {}", acc_name, e))?;
+                let result = sqlx::query("INSERT INTO accounts (name) VALUES (?)")
+                    .bind(acc_name)
+                    .execute(&state.pool)
+                    .await
+                    .map_err(|e| format!("Failed to create account '{}': {}", acc_name, e))?;
 
                 accounts_created.insert(acc_name.to_string());
                 result.last_insert_rowid()
             };
 
             // Ensure user has access to this account
-            sqlx::query(
-                "INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)",
-            )
-            .bind(user.id)
-            .bind(acc_id)
-            .execute(&state.pool)
-            .await
-            .map_err(|e| format!("Failed to link account: {}", e))?;
+            sqlx::query("INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)")
+                .bind(user.id)
+                .bind(acc_id)
+                .execute(&state.pool)
+                .await
+                .map_err(|e| format!("Failed to link account: {}", e))?;
 
             Some(acc_id)
         } else {
@@ -468,14 +462,15 @@ async fn import_row(
                         Some(cat_id)
                     } else {
                         // Category doesn't exist, create it
-                        let result = sqlx::query(
-                            "INSERT INTO categories (user_id, name) VALUES (?, ?)",
-                        )
-                        .bind(user.id)
-                        .bind(cat_name)
-                        .execute(&state.pool)
-                        .await
-                        .map_err(|e| format!("Failed to create category '{}': {}", cat_name, e))?;
+                        let result =
+                            sqlx::query("INSERT INTO categories (user_id, name) VALUES (?, ?)")
+                                .bind(user.id)
+                                .bind(cat_name)
+                                .execute(&state.pool)
+                                .await
+                                .map_err(|e| {
+                                    format!("Failed to create category '{}': {}", cat_name, e)
+                                })?;
 
                         categories_created.insert(cat_name.to_string());
                         Some(result.last_insert_rowid())
@@ -508,9 +503,10 @@ async fn import_row(
         .map_err(|e| format!("Database error fetching rules: {}", e))?;
 
         let description_lower = description.to_lowercase();
-        if let Some(matched_rule) = rules.iter().find(|rule| {
-            description_lower.contains(&rule.pattern.to_lowercase())
-        }) {
+        if let Some(matched_rule) = rules
+            .iter()
+            .find(|rule| description_lower.contains(&rule.pattern.to_lowercase()))
+        {
             if category_id.is_none() && matched_rule.category_id.is_some() {
                 final_category_id = matched_rule.category_id;
             }
@@ -563,18 +559,18 @@ async fn import_row(
 
 fn normalize_date(date_str: &str) -> Result<String, String> {
     let date_str = date_str.trim();
-    
+
     if date_str.contains('/') {
         let parts: Vec<&str> = date_str.split('/').collect();
         if parts.len() == 3 {
             return Ok(format!("{}-{:0>2}-{:0>2}", parts[0], parts[1], parts[2]));
         }
     }
-    
+
     if date_str.contains('-') && date_str.len() == 10 {
         return Ok(date_str.to_string());
     }
-    
+
     Err(format!(
         "Invalid date format: '{}'. Expected YYYY-MM-DD or YYYY/MM/DD",
         date_str

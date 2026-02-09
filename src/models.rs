@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: i64,
     pub email: String,
@@ -9,6 +9,12 @@ pub struct User {
     pub oauth_provider: String,
     pub oauth_id: String,
     pub created_at: String,
+}
+
+impl User {
+    pub fn in_storage(&self) -> bool {
+        self.id > 0
+    }
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]

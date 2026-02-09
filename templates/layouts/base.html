@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    {% if csr == false %}
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+      <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'nonce-{{ nonce }}'">
+      <meta name="ssr-headers" content="'x-nonce':'{{ nonce }}'">
+    {% endif %}
+    <title>{% block title %}Dashboard{% endblock %} - Budget2</title>
+    {% if csr == false %}
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.amber.min.css">
+      <style>
+    :root {
+      --pico-font-size: 16px;
+    }
+
+    td,
+    th {
+      input:not([type=checkbox],[type=radio]),
+      select,
+      textarea {
+        --pico-form-element-spacing-vertical: 0.2rem;
+        --pico-form-element-spacing-horizontal: 0.4rem;
+        margin: -0.1rem -0.4rem;
+      }
+    }
+
+    .nowrap {
+      white-space: nowrap;
+    }
+      </style>
+    {% endif %}
+  </head>
+  <body data-init @ssr:fetch-error="@dispatch(document, 'ssr:sse-patch-elements', {detail:{data:notification(evt.detail.error)}})">
+    {% block header %}
+    <header id="header">
+      <div class="nav-wrapper document-width">
+        <nav class="container-fluid">
+          <ul>
+            <li><a href="/">Budget2</a></li>
+          </ul>
+          <ul>
+            {% if user.in_storage() %}
+              <li><a href="/add">Add</a></li>
+              <li><a href="/import">Import</a></li>
+              <li><a href="/settings" title="{{ user.name }}">Settings</a></li>
+            {% else %}
+              <li><a href="/login" role="button">Login</a></li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+    </header>
+  {% endblock %}
+
+  {% block content %}<p>content missing!</p>{% endblock %}
+
+  <div id="notifications" data-preserve></div>
+  <progress id="loader" data-preserve></progress>
+
+  {% block footer %}
+    <footer id="footer">
+      <div class="document-width"></div>
+    </footer>
+  {% endblock %}
+
+{% if csr == false %}
+  <script nonce="{{ nonce }}" src="https://cdn.jsdelivr.net/gh/jhthorsen/ssr.js@6bb4b67/ssr.js"></script>
+  <script nonce="{{ nonce }}">
+    function notification(message) {
+      return `<div class="notification" data-init="@debounce(@destroy(el), 3000)" data-swap="append:#notifications">${message}</div>`
+    }
+  </script>
+{% endif %}
+</body>
+</html>

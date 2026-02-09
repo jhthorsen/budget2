@@ -1,26 +1,38 @@
 mod auth;
+mod filters;
 mod handlers;
 mod models;
-mod filters;
 
 use anyhow::Result;
-use auth::{auth_callback, create_oauth_client, login_handler, logout_handler, AppState};
-use axum::{
-    routing::{get, post},
-    Router,
+use auth::create_oauth_client;
+use axum::routing::{get, post};
+use axum::Router;
+use handlers::csv::{csv_import_handler, csv_upload_handler, csv_upload_page};
+use handlers::rules::{
+    rules_apply, rules_create, rules_delete, rules_edit_page, rules_list, rules_new_page,
+    rules_update,
 };
 use handlers::{
-    create_category_handler, create_transaction_handler, create_account_handler, 
-    toggle_account_ownership_handler, dashboard_handler, index_handler,
-    csv::{csv_upload_page, csv_upload_handler, csv_import_handler},
-    rules::{rules_list, rules_new_page, rules_create, rules_edit_page, rules_update, rules_delete, rules_apply},
+    create_account_handler, create_category_handler, create_transaction_handler, dashboard_handler,
+    index_handler, toggle_account_ownership_handler,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use tower_http::trace::TraceLayer;
+use tower_sessions::cookie::SameSite;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore;
-use tower_sessions::cookie::SameSite;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: sqlx::SqlitePool,
+    pub oauth_client: oauth2::basic::BasicClient,
+    pub userinfo_url: String,
+}
+
+fn nonce() -> String {
+    "todorandom".to_string()
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -34,7 +46,8 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:budget.db".to_string());
+    let database_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:budget.db".to_string());
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
@@ -63,13 +76,16 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", get(index_handler))
         .route("/dashboard", get(dashboard_handler))
-        .route("/login", get(login_handler))
-        .route("/logout", get(logout_handler))
-        .route("/auth/callback", get(auth_callback))
+        .route("/login", get(handlers::auth::login))
+        .route("/logout", get(handlers::auth::logout))
+        .route("/auth/callback", get(handlers::auth::callback))
         .route("/transactions", post(create_transaction_handler))
         .route("/categories", post(create_category_handler))
         .route("/accounts", post(create_account_handler))
-        .route("/accounts/toggle-ownership", post(toggle_account_ownership_handler))
+        .route(
+            "/accounts/toggle-ownership",
+            post(toggle_account_ownership_handler),
+        )
         .route("/import", get(csv_upload_page))
         .route("/import/upload", post(csv_upload_handler))
         .route("/import/process", post(csv_import_handler))
@@ -82,11 +98,8 @@ async fn main() -> Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await?;
-    
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     tracing::info!("Listening on http://{}", listener.local_addr()?);
-    
     axum::serve(listener, app).await?;
 
     Ok(())

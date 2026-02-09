@@ -1,21 +1,18 @@
+pub mod auth;
 pub mod csv;
 pub mod rules;
 
 use askama::Template;
 use axum::{
+    Form,
     extract::{Query, State},
     response::{Html, IntoResponse, Redirect, Response},
-    Form,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tower_sessions::Session;
 
-use crate::{
-    auth::{get_current_user, AppState},
-    models::*,
-    filters,
-};
+use crate::{AppState, auth::get_current_user, filters, models::*};
 
 #[derive(Debug, Deserialize)]
 pub struct PaginationParams {
@@ -31,20 +28,18 @@ pub struct TransactionFilters {
     pub page: i64,
     #[serde(default = "default_per_page")]
     pub per_page: i64,
-    #[serde(default, deserialize_with = "empty_string_as_none")]
-    pub search: Option<String>,
-    #[serde(default, deserialize_with = "empty_string_as_none")]
-    pub transaction_type: Option<String>,
-    #[serde(default, deserialize_with = "empty_string_as_none")]
-    pub category_id: Option<String>,
-    #[serde(default, deserialize_with = "empty_string_as_none_i64")]
-    pub account_id: Option<i64>,
-    #[serde(default, deserialize_with = "empty_string_as_none")]
-    pub account: Option<String>,
-    #[serde(default, deserialize_with = "empty_string_as_none")]
-    pub date_from: Option<String>,
-    #[serde(default, deserialize_with = "empty_string_as_none")]
-    pub date_to: Option<String>,
+    #[serde(default)]
+    pub search: String,
+    #[serde(default)]
+    pub transaction_type: String,
+    #[serde(default)]
+    pub category_id: i64,
+    #[serde(default)]
+    pub account_id: i64,
+    #[serde(default)]
+    pub account: String,
+    #[serde(default)]
+    pub month: String,
 }
 
 fn default_page() -> i64 {
@@ -55,39 +50,19 @@ fn default_per_page() -> i64 {
     20
 }
 
-fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    if s.trim().is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(s))
-    }
-}
-
-fn empty_string_as_none_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    if s.trim().is_empty() {
-        Ok(None)
-    } else {
-        s.parse::<i64>().map(Some).map_err(serde::de::Error::custom)
-    }
-}
-
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
-    user: Option<User>,
+    csr: bool,
+    nonce: String,
+    user: User,
 }
 
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
+    csr: bool,
+    nonce: String,
     user: User,
     transactions: Vec<TransactionWithCategory>,
     categories: Vec<Category>,
@@ -95,20 +70,27 @@ struct DashboardTemplate {
     summary: BudgetSummary,
     filtered_summary: BudgetSummary,
     pagination: PaginationInfo,
-    filters: TransactionFilters,
+    query: TransactionFilters,
 }
 
 pub async fn index_handler(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool).await;
+    let user = get_current_user(&session, &state.pool)
+        .await
+        .unwrap_or_default();
 
-    if user.is_some() {
+    if !user.in_storage() {
         return Ok(Redirect::to("/dashboard").into_response());
     }
 
-    let template = IndexTemplate { user };
+    let template = IndexTemplate {
+        csr: false,
+        nonce: crate::nonce(),
+        user,
+    };
+
     template
         .render()
         .map(Html)
@@ -143,54 +125,36 @@ pub async fn dashboard_handler(
     let mut where_clauses = vec!["t.user_id = ?".to_string()];
     let mut params: Vec<String> = vec![user.id.to_string()];
 
-    if let Some(ref search) = filters.search {
-        if !search.trim().is_empty() {
-            where_clauses.push("t.description LIKE ?".to_string());
-            params.push(format!("%{}%", search));
-        }
+    if !filters.search.trim().is_empty() {
+        let search = filters.search.trim();
+        where_clauses.push("t.description LIKE ?".to_string());
+        params.push(format!("%{}%", search));
     }
 
-    if let Some(ref trans_type) = filters.transaction_type {
-        if !trans_type.is_empty() && trans_type != "all" {
-            where_clauses.push("t.type = ?".to_string());
-            params.push(trans_type.clone());
-        }
+    if !filters.transaction_type.is_empty() {
+        where_clauses.push("t.type = ?".to_string());
+        params.push(filters.transaction_type.clone());
     }
 
-    if let Some(ref cat_id) = filters.category_id {
-        if cat_id == "no_category" {
+    match filters.category_id {
+        0 => {}
+        -1 => {
             where_clauses.push("t.category_id IS NULL".to_string());
-        } else {
+        }
+        id => {
             where_clauses.push("t.category_id = ?".to_string());
-            params.push(cat_id.to_string());
+            params.push(id.to_string());
         }
-    }
+    };
 
-    if let Some(acc_id) = filters.account_id {
+    if filters.account_id > 0 {
         where_clauses.push("t.account_id = ?".to_string());
-        params.push(acc_id.to_string());
+        params.push(filters.account_id.to_string());
     }
 
-    // Keep old account filter for backward compatibility
-    if let Some(ref account) = filters.account {
-        if !account.trim().is_empty() {
-            where_clauses.push("t.account = ?".to_string());
-            params.push(account.clone());
-        }
-    }
-
-    if let Some(ref date_from) = filters.date_from {
-        if !date_from.trim().is_empty() {
-            where_clauses.push("t.transaction_date >= ?".to_string());
-            params.push(date_from.clone());
-        }
-    }
-
-    if let Some(ref date_to) = filters.date_to {
-        if !date_to.trim().is_empty() {
-            where_clauses.push("t.transaction_date <= ?".to_string());
-            params.push(date_to.clone());
-        }
+    if !filters.month.is_empty() {
+        where_clauses.push("strftime('%Y-%m', t.transaction_date) = ?".to_string());
+        params.push(filters.month.clone());
     }
 
     let where_clause = where_clauses.join(" AND ");
@@ -211,6 +175,9 @@ pub async fn dashboard_handler(
     })?;
 
     let total_pages = (total_items + per_page - 1) / per_page;
+
+    eprintln!("{where_clause:?}");
+    eprintln!("{params:?}");
 
     // Get transactions
     let select_query = format!(
@@ -254,18 +221,19 @@ pub async fn dashboard_handler(
                 .into_response()
         })?;
 
-    let categories = sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
-        .bind(user.id)
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error",
-            )
-                .into_response()
-        })?;
+    let categories =
+        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
+            .bind(user.id)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| {
+                tracing::error!("Database error: {}", e);
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Database error",
+                )
+                    .into_response()
+            })?;
 
     // Get accounts accessible to this user with ownership status
     let accounts = sqlx::query_as::<_, AccountWithOwnership>(
@@ -275,7 +243,7 @@ pub async fn dashboard_handler(
         INNER JOIN user_accounts ua ON a.id = ua.account_id
         WHERE ua.user_id = ?
         ORDER BY a.name
-        "#
+        "#,
     )
     .bind(user.id)
     .fetch_all(&state.pool)
@@ -316,18 +284,22 @@ pub async fn dashboard_handler(
         total_expenses: f64,
     }
 
-    let mut filtered_summary_query_exec = sqlx::query_as::<_, FilteredSummaryRow>(&filtered_summary_query);
+    let mut filtered_summary_query_exec =
+        sqlx::query_as::<_, FilteredSummaryRow>(&filtered_summary_query);
     for param in &params {
         filtered_summary_query_exec = filtered_summary_query_exec.bind(param);
     }
-    let filtered_result = filtered_summary_query_exec.fetch_one(&state.pool).await.map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    let filtered_result = filtered_summary_query_exec
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error",
+            )
+                .into_response()
+        })?;
 
     let filtered_summary = BudgetSummary {
         total_income: filtered_result.total_income,
@@ -343,6 +315,8 @@ pub async fn dashboard_handler(
     };
 
     let template = DashboardTemplate {
+        csr: false,
+        nonce: crate::nonce(),
         user,
         transactions,
         categories,
@@ -350,7 +324,7 @@ pub async fn dashboard_handler(
         summary,
         filtered_summary,
         pagination,
-        filters,
+        query: filters,
     };
 
     template
@@ -414,22 +388,20 @@ pub async fn create_category_handler(
         .await
         .ok_or_else(|| Redirect::to("/").into_response())?;
 
-    sqlx::query(
-        "INSERT INTO categories (user_id, name, color) VALUES (?, ?, ?)",
-    )
-    .bind(user.id)
-    .bind(&new_category.name)
-    .bind(&new_category.color)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    sqlx::query("INSERT INTO categories (user_id, name, color) VALUES (?, ?, ?)")
+        .bind(user.id)
+        .bind(&new_category.name)
+        .bind(&new_category.color)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error",
+            )
+                .into_response()
+        })?;
 
     Ok(Redirect::to("/dashboard"))
 }
@@ -461,11 +433,26 @@ pub async fn create_account_handler(
         id
     } else {
         // Create new account
-        let result = sqlx::query(
-            "INSERT INTO accounts (name, description) VALUES (?, ?)",
-        )
-        .bind(&new_account.name)
-        .bind(&new_account.description)
+        let result = sqlx::query("INSERT INTO accounts (name, description) VALUES (?, ?)")
+            .bind(&new_account.name)
+            .bind(&new_account.description)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| {
+                tracing::error!("Database error: {}", e);
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Database error",
+                )
+                    .into_response()
+            })?;
+        result.last_insert_rowid()
+    };
+
+    // Link user to account
+    sqlx::query("INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)")
+        .bind(user.id)
+        .bind(account_id)
         .execute(&state.pool)
         .await
         .map_err(|e| {
@@ -476,25 +463,6 @@ pub async fn create_account_handler(
             )
                 .into_response()
         })?;
-        result.last_insert_rowid()
-    };
-
-    // Link user to account
-    sqlx::query(
-        "INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)",
-    )
-    .bind(user.id)
-    .bind(account_id)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
 
     Ok(Redirect::to("/dashboard"))
 }
@@ -508,22 +476,20 @@ pub async fn toggle_account_ownership_handler(
         .await
         .ok_or_else(|| Redirect::to("/").into_response())?;
 
-    sqlx::query(
-        "UPDATE user_accounts SET is_mine = ? WHERE user_id = ? AND account_id = ?",
-    )
-    .bind(toggle.is_mine)
-    .bind(user.id)
-    .bind(toggle.account_id)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    sqlx::query("UPDATE user_accounts SET is_mine = ? WHERE user_id = ? AND account_id = ?")
+        .bind(toggle.is_mine)
+        .bind(user.id)
+        .bind(toggle.account_id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error",
+            )
+                .into_response()
+        })?;
 
     Ok(Redirect::to("/dashboard"))
 }
