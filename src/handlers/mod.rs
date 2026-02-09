@@ -93,6 +93,7 @@ struct DashboardTemplate {
     categories: Vec<Category>,
     accounts: Vec<AccountWithOwnership>,
     summary: BudgetSummary,
+    filtered_summary: BudgetSummary,
     pagination: PaginationInfo,
     filters: TransactionFilters,
 }
@@ -297,6 +298,43 @@ pub async fn dashboard_handler(
             .into_response()
     })?;
 
+    // Calculate filtered summary
+    let filtered_summary_query = format!(
+        r#"
+        SELECT 
+            CAST(COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_income,
+            CAST(COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_expenses
+        FROM transactions t
+        WHERE {}
+        "#,
+        where_clause
+    );
+
+    #[derive(sqlx::FromRow)]
+    struct FilteredSummaryRow {
+        total_income: f64,
+        total_expenses: f64,
+    }
+
+    let mut filtered_summary_query_exec = sqlx::query_as::<_, FilteredSummaryRow>(&filtered_summary_query);
+    for param in &params {
+        filtered_summary_query_exec = filtered_summary_query_exec.bind(param);
+    }
+    let filtered_result = filtered_summary_query_exec.fetch_one(&state.pool).await.map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error",
+        )
+            .into_response()
+    })?;
+
+    let filtered_summary = BudgetSummary {
+        total_income: filtered_result.total_income,
+        total_expenses: filtered_result.total_expenses,
+        balance: filtered_result.total_income - filtered_result.total_expenses,
+    };
+
     let pagination = PaginationInfo {
         current_page: page,
         total_pages,
@@ -310,6 +348,7 @@ pub async fn dashboard_handler(
         categories,
         accounts,
         summary,
+        filtered_summary,
         pagination,
         filters,
     };

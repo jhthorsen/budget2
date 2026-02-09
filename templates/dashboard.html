@@ -252,6 +252,24 @@
             {% if transactions.is_empty() %}
                 <p>No transactions found matching your filters.</p>
             {% else %}
+                <!-- Filtered Summary -->
+                <article style="margin-bottom: 1rem;">
+                    <div class="grid">
+                        <div>
+                            <h6>Filtered Income</h6>
+                            <p style="color: green; font-size: 1.2em;">{{ filtered_summary.total_income|format_amount }}</p>
+                        </div>
+                        <div>
+                            <h6>Filtered Expenses</h6>
+                            <p style="color: red; font-size: 1.2em;">{{ filtered_summary.total_expenses|format_amount }}</p>
+                        </div>
+                        <div>
+                            <h6>Filtered Balance</h6>
+                            <p style="font-size: 1.2em; {% if filtered_summary.balance >= 0.0 %}color: green;{% else %}color: red;{% endif %}">{{ filtered_summary.balance|format_amount }}</p>
+                        </div>
+                    </div>
+                </article>
+
                 <figure>
                     <table>
                         <thead>
