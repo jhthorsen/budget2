@@ -1,39 +1,25 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Map CSV Columns - Budget App</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-    <script>
-        function validateForm(event) {
-            const typeFixed = document.getElementById('type_fixed_value').value;
-            
-            if (!typeFixed) {
-                event.preventDefault();
-                alert('Please select a Transaction Type');
-                return false;
-            }
-            
-            return true;
-        }
-    </script>
-</head>
-<body>
-    <nav class="container-fluid">
-        <ul>
-            <li><strong>Budget App</strong></li>
-        </ul>
-        <ul>
-            <li><a href="/dashboard">Dashboard</a></li>
-            <li><a href="/rules">Import Rules</a></li>
-            <li>{{ user.name }}</li>
-            <li><a href="/logout" role="button">Logout</a></li>
-        </ul>
-    </nav>
+{% extends "layouts/base.html" %}
 
-    <main class="container">
-        <section>
+{% block title %}Map CSV Columns - Budget App{% endblock %}
+
+{% block extra_head %}
+<script>
+    function validateForm(event) {
+        const typeFixed = document.getElementById('type_fixed_value').value;
+        
+        if (!typeFixed) {
+            event.preventDefault();
+            alert('Please select a Transaction Type');
+            return false;
+        }
+        
+        return true;
+    }
+</script>
+{% endblock %}
+
+{% block content %}
+<section>
             <h1>Map CSV Columns</h1>
             
             <article>
@@ -138,7 +124,5 @@
                     </div>
                 </form>
             </article>
-        </section>
-    </main>
-</body>
-</html>
+</section>
+{% endblock %}

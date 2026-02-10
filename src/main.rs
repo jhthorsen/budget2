@@ -4,16 +4,10 @@ mod models;
 mod filters;
 
 use anyhow::Result;
-use auth::{auth_callback, create_oauth_client, login_handler, logout_handler, AppState};
+use auth::{AppState, create_oauth_client};
 use axum::{
     routing::{get, post},
     Router,
-};
-use handlers::{
-    create_category_handler, create_transaction_handler, create_account_handler, 
-    toggle_account_ownership_handler, dashboard_handler, index_handler,
-    csv::{csv_upload_page, csv_upload_handler, csv_import_handler},
-    rules::{rules_list, rules_new_page, rules_create, rules_edit_page, rules_update, rules_delete, rules_apply},
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use tower_http::trace::TraceLayer;
@@ -61,23 +55,23 @@ async fn main() -> Result<()> {
     };
 
     let app = Router::new()
-        .route("/", get(index_handler))
-        .route("/dashboard", get(dashboard_handler))
-        .route("/login", get(login_handler))
-        .route("/logout", get(logout_handler))
-        .route("/auth/callback", get(auth_callback))
-        .route("/transactions", post(create_transaction_handler))
-        .route("/categories", post(create_category_handler))
-        .route("/accounts", post(create_account_handler))
-        .route("/accounts/toggle-ownership", post(toggle_account_ownership_handler))
-        .route("/import", get(csv_upload_page))
-        .route("/import/upload", post(csv_upload_handler))
-        .route("/import/process", post(csv_import_handler))
-        .route("/rules", get(rules_list))
-        .route("/rules/new", get(rules_new_page).post(rules_create))
-        .route("/rules/:id/edit", get(rules_edit_page).post(rules_update))
-        .route("/rules/:id/delete", post(rules_delete))
-        .route("/rules/:id/apply", post(rules_apply))
+        .route("/", get(handlers::index::index_handler))
+        .route("/dashboard", get(handlers::dashboard::dashboard_handler))
+        .route("/login", get(handlers::login::login_handler))
+        .route("/logout", get(handlers::logout::logout_handler))
+        .route("/auth/callback", get(handlers::callback::auth_callback))
+        .route("/transactions", post(handlers::transactions::create_transaction_handler))
+        .route("/categories", post(handlers::categories::create_category_handler))
+        .route("/accounts", post(handlers::accounts::create_account_handler))
+        .route("/accounts/toggle-ownership", post(handlers::accounts::toggle_account_ownership_handler))
+        .route("/import", get(handlers::csv::csv_upload_page))
+        .route("/import/upload", post(handlers::csv::csv_upload_handler))
+        .route("/import/process", post(handlers::csv::csv_import_handler))
+        .route("/rules", get(handlers::rules::rules_list))
+        .route("/rules/new", get(handlers::rules::rules_new_page).post(handlers::rules::rules_create))
+        .route("/rules/:id/edit", get(handlers::rules::rules_edit_page).post(handlers::rules::rules_update))
+        .route("/rules/:id/delete", post(handlers::rules::rules_delete))
+        .route("/rules/:id/apply", post(handlers::rules::rules_apply))
         .layer(session_layer)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
