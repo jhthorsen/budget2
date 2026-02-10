@@ -9,6 +9,7 @@ use tower_sessions::Session;
 use crate::{
     auth::{get_current_user, AppState},
     models::*,
+    request_context::RequestContext,
 };
 
 #[derive(Template)]
@@ -16,6 +17,8 @@ use crate::{
 struct RulesListTemplate {
     user: User,
     grouped_rules: Vec<CategoryGroup>,
+    csr: bool,
+    nonce: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -31,6 +34,8 @@ struct RulesFormTemplate {
     rule: Option<ImportRule>,
     categories: Vec<Category>,
     accounts: Vec<AccountWithOwnership>,
+    csr: bool,
+    nonce: String,
 }
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
@@ -51,6 +56,7 @@ struct ImportRuleWithNames {
 pub async fn rules_list(
     State(state): State<AppState>,
     session: Session,
+    ctx: RequestContext,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool)
         .await
@@ -115,9 +121,11 @@ pub async fn rules_list(
         });
     }
 
-    let template = RulesListTemplate { 
-        user, 
+    let template = RulesListTemplate {
+        user,
         grouped_rules,
+        csr: ctx.csr,
+        nonce: ctx.nonce,
     };
     template
         .render()
@@ -136,6 +144,7 @@ pub async fn rules_list(
 pub async fn rules_new_page(
     State(state): State<AppState>,
     session: Session,
+    ctx: RequestContext,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool)
         .await
@@ -182,6 +191,8 @@ pub async fn rules_new_page(
         rule: None,
         categories,
         accounts,
+        csr: ctx.csr,
+        nonce: ctx.nonce,
     };
     template
         .render()
@@ -247,6 +258,7 @@ pub async fn rules_edit_page(
     State(state): State<AppState>,
     session: Session,
     Path(rule_id): Path<i64>,
+    ctx: RequestContext,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool)
         .await
@@ -316,6 +328,8 @@ pub async fn rules_edit_page(
         rule: Some(rule),
         categories,
         accounts,
+        csr: ctx.csr,
+        nonce: ctx.nonce,
     };
     template
         .render()

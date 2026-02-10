@@ -2,6 +2,7 @@ mod auth;
 mod handlers;
 mod models;
 mod filters;
+mod request_context;
 
 use anyhow::Result;
 use auth::{AppState, create_oauth_client};

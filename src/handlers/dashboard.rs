@@ -10,6 +10,7 @@ use crate::{
     auth::{get_current_user, AppState},
     models::*,
     filters,
+    request_context::RequestContext,
 };
 
 use super::TransactionFilters;
@@ -25,12 +26,15 @@ struct DashboardTemplate {
     filtered_summary: BudgetSummary,
     pagination: PaginationInfo,
     filters: TransactionFilters,
+    csr: bool,
+    nonce: String,
 }
 
 pub async fn dashboard_handler(
     State(state): State<AppState>,
     session: Session,
     Query(filters): Query<TransactionFilters>,
+    ctx: RequestContext,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool).await;
 
@@ -255,6 +259,8 @@ pub async fn dashboard_handler(
         filtered_summary,
         pagination,
         filters,
+        csr: ctx.csr,
+        nonce: ctx.nonce,
     };
 
     template

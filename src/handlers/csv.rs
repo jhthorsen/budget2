@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::{
     auth::{get_current_user, AppState},
     models::*,
+    request_context::RequestContext,
 };
 
 const CSV_SESSION_KEY: &str = "csv_upload";
@@ -22,6 +23,8 @@ const CSV_SESSION_KEY: &str = "csv_upload";
 #[template(path = "csv_upload.html")]
 struct CsvUploadTemplate {
     user: User,
+    csr: bool,
+    nonce: String,
 }
 
 #[derive(Template)]
@@ -31,6 +34,8 @@ struct CsvMappingTemplate {
     file_id: String,
     headers: Vec<String>,
     categories: Vec<Category>,
+    csr: bool,
+    nonce: String,
 }
 
 #[derive(Template)]
@@ -38,17 +43,24 @@ struct CsvMappingTemplate {
 struct CsvResultTemplate {
     user: User,
     result: ImportResult,
+    csr: bool,
+    nonce: String,
 }
 
 pub async fn csv_upload_page(
     State(state): State<AppState>,
     session: Session,
+    ctx: RequestContext,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool)
         .await
         .ok_or_else(|| Redirect::to("/").into_response())?;
 
-    let template = CsvUploadTemplate { user };
+    let template = CsvUploadTemplate { 
+        user,
+        csr: ctx.csr,
+        nonce: ctx.nonce,
+    };
     template
         .render()
         .map(Html)
@@ -66,6 +78,7 @@ pub async fn csv_upload_page(
 pub async fn csv_upload_handler(
     State(state): State<AppState>,
     session: Session,
+    ctx: RequestContext,
     mut multipart: Multipart,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool)
@@ -151,6 +164,8 @@ pub async fn csv_upload_handler(
                 file_id,
                 headers,
                 categories,
+                csr: ctx.csr,
+                nonce: ctx.nonce,
             };
 
             return template
@@ -178,6 +193,7 @@ pub async fn csv_upload_handler(
 pub async fn csv_import_handler(
     State(state): State<AppState>,
     session: Session,
+    ctx: RequestContext,
     Form(mapping): Form<ColumnMapping>,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool)
@@ -226,7 +242,12 @@ pub async fn csv_import_handler(
             .into_response()
     })?;
 
-    let template = CsvResultTemplate { user, result };
+    let template = CsvResultTemplate { 
+        user, 
+        result,
+        csr: ctx.csr,
+        nonce: ctx.nonce,
+    };
     template
         .render()
         .map(Html)

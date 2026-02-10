@@ -8,17 +8,21 @@ use tower_sessions::Session;
 use crate::{
     auth::{get_current_user, AppState},
     models::User,
+    request_context::RequestContext,
 };
 
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
     user: Option<User>,
+    csr: bool,
+    nonce: String,
 }
 
 pub async fn index_handler(
     State(state): State<AppState>,
     session: Session,
+    ctx: RequestContext,
 ) -> Result<Response, Response> {
     let user = get_current_user(&session, &state.pool).await;
 
@@ -26,7 +30,11 @@ pub async fn index_handler(
         return Ok(Redirect::to("/dashboard").into_response());
     }
 
-    let template = IndexTemplate { user };
+    let template = IndexTemplate { 
+        user,
+        csr: ctx.csr,
+        nonce: ctx.nonce,
+    };
     template
         .render()
         .map(Html)
