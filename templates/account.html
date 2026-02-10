@@ -1,0 +1,98 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Account Settings - Budget App{% endblock %}
+
+{% block content %}
+<section>
+    <h1>Account Settings</h1>
+    
+    <!-- Add Category Form -->
+    <article>
+        <header><strong>Add Category</strong></header>
+        <form action="/categories" method="post">
+            <label>
+                Name
+                <input type="text" name="name" required placeholder="Enter category name">
+            </label>
+            <label>
+                Color (optional)
+                <input type="color" name="color" placeholder="#000000">
+            </label>
+            <button type="submit">Add Category</button>
+        </form>
+    </article>
+
+    <!-- Existing Categories -->
+    {% if !categories.is_empty() %}
+    <article>
+        <header><strong>Your Categories</strong></header>
+        <div class="grid">
+            {% for category in categories %}
+            <div style="padding: 0.5rem; border-left: 4px solid {% match category.color %}{% when Some with (c) %}{{ c }}{% when None %}#cccccc{% endmatch %};">
+                {{ category.name }}
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+    {% endif %}
+
+    <!-- Add Account Form -->
+    <article>
+        <header><strong>Add Account</strong></header>
+        <form action="/accounts" method="post">
+            <label>
+                Name
+                <input type="text" name="name" required placeholder="e.g., Checking, Savings, Credit Card">
+            </label>
+            <label>
+                Description (optional)
+                <input type="text" name="description" placeholder="Optional description">
+            </label>
+            <button type="submit">Add Account</button>
+        </form>
+    </article>
+
+    <!-- Manage Accounts -->
+    <article>
+        <header><strong>Manage Accounts</strong></header>
+        <p><small>Toggle accounts as "Mine" to include them in your balance calculation. Unchecked accounts (shared accounts you don't own) won't affect your balance.</small></p>
+        
+        {% if accounts.is_empty() %}
+            <p>No accounts yet. Add your first account using the form above!</p>
+        {% else %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Account Name</th>
+                        <th>Description</th>
+                        <th>Include in Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for account in accounts %}
+                    <tr>
+                        <td><strong>{{ account.name }}</strong></td>
+                        <td>
+                            {% match account.description %}
+                                {% when Some with (desc) %}{{ desc }}{% when None %}<em>-</em>
+                            {% endmatch %}
+                        </td>
+                        <td>
+                            <form action="/accounts/toggle-ownership" method="post" style="margin: 0;">
+                                <input type="hidden" name="account_id" value="{{ account.id }}">
+                                <input type="hidden" name="is_mine" value="{% if account.is_mine %}false{% else %}true{% endif %}">
+                                <button type="submit" class="{% if account.is_mine %}contrast{% else %}secondary{% endif %}" style="padding: 0.25rem 0.5rem;">
+                                    {% if account.is_mine %}✓ Mine{% else %}Add to Balance{% endif %}
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </article>
+
+    <a href="/dashboard" role="button" class="secondary">Back to Dashboard</a>
+</section>
+{% endblock %}

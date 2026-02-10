@@ -1,0 +1,53 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Add Transaction - Budget App{% endblock %}
+
+{% block content %}
+<section>
+    <h1>Add Transaction</h1>
+    
+    <article>
+        <form action="/transactions" method="post">
+            <label>
+                Type
+                <select name="type" required>
+                    <option value="income">Income</option>
+                    <option value="expense">Expense</option>
+                </select>
+            </label>
+            <label>
+                Amount
+                <input type="number" name="amount" step="0.01" min="0" required placeholder="0.00">
+            </label>
+            <label>
+                Description
+                <input type="text" name="description" required placeholder="Enter description">
+            </label>
+            <label>
+                Date
+                <input type="date" name="transaction_date" required>
+            </label>
+            <label>
+                Category (optional)
+                <select name="category_id">
+                    <option value="">No category</option>
+                    {% for category in categories %}
+                    <option value="{{ category.id }}">{{ category.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Account (optional)
+                <select name="account_id">
+                    <option value="">No account</option>
+                    {% for account in accounts %}
+                    <option value="{{ account.id }}">{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button type="submit">Add Transaction</button>
+            <a href="/dashboard" role="button" class="secondary">Cancel</a>
+        </form>
+    </article>
+</section>
+{% endblock %}

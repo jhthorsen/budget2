@@ -58,6 +58,8 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", get(handlers::index::index_handler))
         .route("/dashboard", get(handlers::dashboard::dashboard_handler))
+        .route("/add", get(handlers::add_transaction::add_transaction_page))
+        .route("/account", get(handlers::account::account_page))
         .route("/login", get(handlers::login::login_handler))
         .route("/logout", get(handlers::logout::logout_handler))
         .route("/auth/callback", get(handlers::callback::auth_callback))
