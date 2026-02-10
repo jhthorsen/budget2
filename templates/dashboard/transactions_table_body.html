@@ -1,0 +1,87 @@
+<tbody id="transactions_table_body" data-init on:click="filterTransactions($, evt)">
+  {% for transaction in transactions %}
+    <tr class="transaction-row"
+        {% if filters.page > 1 %}data-swap="before:#transactions_infinite_scroll"{% endif %}
+        style="--transaction-color: {% if let Some(color) = transaction.category_color %}{{ color }}{% else %}transparent{% endif %}">
+      <td class="nowrap">
+        <a href="#month:{{ transaction.transaction_date|extract_month }}" target="preventDefault">{{ transaction.transaction_date }}</a>
+      </td>
+      <td>{{ transaction.description }}</td>
+      <td class="nowrap">
+        {% match transaction.account_name %}
+          {% when Some with (account_name) %}
+            {{ account_name }}
+          {% when None %}
+            {% match transaction.account %}
+              {% when Some with (account) %}
+                {{ account }}
+              {% when None %}
+                <em style="opacity: 0.5;">-</em>
+            {% endmatch %}
+        {% endmatch %}
+      </td>
+      <td class="nowrap">
+        {% if let Some(name) = transaction.category_name %}
+          {{ name }}
+        {% else %}
+          <em style="opacity: 0.5;">No category</em>
+        {% endif %}
+      </td>
+      <td class="nowrap {% if transaction.transaction_type == "income" %}income{% else %}expense{% endif %}" style="text-align: right">
+        {% if transaction.transaction_type == "income" %}+{% else %}-{% endif %}{{ transaction.amount|format_amount }}
+      </td>
+    </tr>
+  {% endfor %}
+  {% if transactions.is_empty() %}
+    <tr id="transactions_infinite_scroll" data-swap="morph:#transactions_infinite_scroll">
+      <td colspan="5" style="text-align: center; padding: 3rem;">
+        <h3>📭 No transactions found</h3>
+        <p>Try adjusting your filters or <a href="/add">add a new transaction</a>.</p>
+      </td>
+    </tr>
+  {% else if more_transactions %}
+    <tr id="transactions_infinite_scroll" data-swap="morph:#transactions_infinite_scroll" data-init on:reveal="loadMoreTransactions($, el)">
+      <td colspan="5" style="text-align: center"><span>Loading...</span></td>
+    </tr>
+  {% else %}
+    <tr id="transactions_infinite_scroll" data-swap="morph:#transactions_infinite_scroll">
+      <td colspan="5" style="text-align: center"><span>No more transactions.</span></td>
+    </tr>
+  {% endif %}
+</tbody>
+<script nonce="{{ nonce }}">
+  function filterTransactions($, evt) {
+    const $f = $(document, '#form_filter')
+    const $a = evt.target.closest('a')
+    if (!$a) return
+    const href = $a.href.replace(/.*#/, '').split(':')
+    if ($f.ariaBusy == 'true') return;
+    $f.ariaBusy = 'true'
+    $f.page.value = '1';
+    $f[href[0]].value = href[1]
+    $f.requestSubmit()
+  }
+
+  function loadMoreTransactions($, $el) {
+    const $f = $(document, '#form_filter')
+    if ($f.ariaBusy == 'true') return;
+    $f.ariaBusy = 'true'
+    $f.page.value = (parseInt($f.page.value) || 1) + 1
+    $f.requestSubmit()
+  }
+</script>
+<style nonce="{{ nonce }}">
+.transaction-row td {
+  transition: background-color 0.15s;
+  border-bottom: 0;
+}
+
+.transaction-row:hover td {
+  background-color: oklch(0% 0.00 0 / 11%);
+}
+
+.transaction-row td:first-child {
+  /* same width as --pico-border-width for th */
+  border-left: 0.1875rem solid var(--transaction-color);
+}
+</style>

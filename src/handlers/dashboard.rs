@@ -8,8 +8,8 @@ use tower_sessions::Session;
 
 use crate::{
     auth::{get_current_user, AppState},
-    models::*,
     filters,
+    models::*,
     request_context::RequestContext,
 };
 
@@ -18,15 +18,26 @@ use super::TransactionFilters;
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
-    user: User,
-    transactions: Vec<TransactionWithCategory>,
-    categories: Vec<Category>,
     accounts: Vec<AccountWithOwnership>,
-    summary: BudgetSummary,
-    filtered_summary: BudgetSummary,
-    pagination: PaginationInfo,
-    filters: TransactionFilters,
+    categories: Vec<Category>,
     csr: bool,
+    filtered_summary: BudgetSummary,
+    filters: TransactionFilters,
+    nonce: String,
+    summary: BudgetSummary,
+    transactions: Vec<TransactionWithCategory>,
+    user: User,
+    more_transactions: bool,
+}
+
+#[derive(Template)]
+#[template(path = "dashboard/search_results.html")]
+struct DashboardSearchResultsTemplate {
+    filtered_summary: BudgetSummary,
+    summary: BudgetSummary,
+    transactions: Vec<TransactionWithCategory>,
+    more_transactions: bool,
+    filters: TransactionFilters,
     nonce: String,
 }
 
@@ -43,82 +54,46 @@ pub async fn dashboard_handler(
         None => return Ok(Redirect::to("/").into_response()),
     };
 
+    const PER_PAGE: i64 = 100;
     let page = filters.page.max(1);
-    let per_page = filters.per_page.clamp(10, 100);
-    let offset = (page - 1) * per_page;
+    let offset = (page - 1) * PER_PAGE;
 
     // Build dynamic WHERE clause
     let mut where_clauses = vec!["t.user_id = ?".to_string()];
     let mut params: Vec<String> = vec![user.id.to_string()];
 
-    if let Some(ref search) = filters.search {
-        if !search.trim().is_empty() {
-            where_clauses.push("t.description LIKE ?".to_string());
-            params.push(format!("%{}%", search));
-        }
+    if !filters.search.trim().is_empty() {
+        where_clauses.push("t.description LIKE ?".to_string());
+        params.push(format!("%{}%", filters.search.trim()));
     }
 
-    if let Some(ref trans_type) = filters.transaction_type {
-        if !trans_type.is_empty() && trans_type != "all" {
-            where_clauses.push("t.type = ?".to_string());
-            params.push(trans_type.clone());
-        }
+    if !filters.transaction_type.is_empty() {
+        where_clauses.push("t.type = ?".to_string());
+        params.push(filters.transaction_type.clone());
     }
 
-    if let Some(ref cat_id) = filters.category_id {
-        if cat_id == "no_category" {
+    match filters.category_id {
+        0 => {}
+        -1 => {
             where_clauses.push("t.category_id IS NULL".to_string());
-        } else {
+        }
+        cat_id => {
             where_clauses.push("t.category_id = ?".to_string());
             params.push(cat_id.to_string());
         }
-    }
+    };
 
-    if let Some(acc_id) = filters.account_id {
+    if filters.account_id > 0 {
         where_clauses.push("t.account_id = ?".to_string());
-        params.push(acc_id.to_string());
+        params.push(filters.account_id.to_string());
     }
 
-    // Keep old account filter for backward compatibility
-    if let Some(ref account) = filters.account {
-        if !account.trim().is_empty() {
-            where_clauses.push("t.account = ?".to_string());
-            params.push(account.clone());
-        }
-    }
-
-    if let Some(ref date_from) = filters.date_from {
-        if !date_from.trim().is_empty() {
-            where_clauses.push("t.transaction_date >= ?".to_string());
-            params.push(date_from.clone());
-        }
-    }
-
-    if let Some(ref date_to) = filters.date_to {
-        if !date_to.trim().is_empty() {
-            where_clauses.push("t.transaction_date <= ?".to_string());
-            params.push(date_to.clone());
-        }
+    if !filters.month.trim().is_empty() {
+        where_clauses.push("strftime('%Y-%m', t.transaction_date) = ?".to_string());
+        params.push(filters.month.trim().to_string());
     }
 
     let where_clause = where_clauses.join(" AND ");
-
-    // Get total count for pagination
-    let count_query = format!("SELECT COUNT(*) FROM transactions t WHERE {}", where_clause);
-    let mut count_query = sqlx::query_scalar::<_, i64>(&count_query);
-    for param in &params {
-        count_query = count_query.bind(param);
-    }
-    let total_items = count_query.fetch_one(&state.pool).await.map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
-
-    let total_pages = (total_items + per_page - 1) / per_page;
 
     // Get transactions
     let select_query = format!(
@@ -148,8 +123,8 @@ pub async fn dashboard_handler(
     for param in &params {
         query = query.bind(param);
     }
-    let transactions = query
-        .bind(per_page)
+    let mut transactions = query
+        .bind(PER_PAGE + 1)
         .bind(offset)
         .fetch_all(&state.pool)
         .await
@@ -162,18 +137,26 @@ pub async fn dashboard_handler(
                 .into_response()
         })?;
 
-    let categories = sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
-        .bind(user.id)
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error",
-            )
-                .into_response()
-        })?;
+    let more_transactions = if transactions.len() as i64 > PER_PAGE {
+        transactions.pop();
+        true
+    } else {
+        false
+    };
+
+    let categories =
+        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
+            .bind(user.id)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| {
+                tracing::error!("Database error: {}", e);
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Database error",
+                )
+                    .into_response()
+            })?;
 
     // Get accounts accessible to this user with ownership status
     let accounts = sqlx::query_as::<_, AccountWithOwnership>(
@@ -183,7 +166,7 @@ pub async fn dashboard_handler(
         INNER JOIN user_accounts ua ON a.id = ua.account_id
         WHERE ua.user_id = ?
         ORDER BY a.name
-        "#
+        "#,
     )
     .bind(user.id)
     .fetch_all(&state.pool)
@@ -224,18 +207,22 @@ pub async fn dashboard_handler(
         total_expenses: f64,
     }
 
-    let mut filtered_summary_query_exec = sqlx::query_as::<_, FilteredSummaryRow>(&filtered_summary_query);
+    let mut filtered_summary_query_exec =
+        sqlx::query_as::<_, FilteredSummaryRow>(&filtered_summary_query);
     for param in &params {
         filtered_summary_query_exec = filtered_summary_query_exec.bind(param);
     }
-    let filtered_result = filtered_summary_query_exec.fetch_one(&state.pool).await.map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    let filtered_result = filtered_summary_query_exec
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error",
+            )
+                .into_response()
+        })?;
 
     let filtered_summary = BudgetSummary {
         total_income: filtered_result.total_income,
@@ -243,29 +230,33 @@ pub async fn dashboard_handler(
         balance: filtered_result.total_income - filtered_result.total_expenses,
     };
 
-    let pagination = PaginationInfo {
-        current_page: page,
-        total_pages,
-        per_page,
-        total_items,
+    let html = if !filters.filtered {
+        let dashboard = DashboardTemplate {
+            accounts,
+            categories,
+            csr: ctx.csr,
+            filtered_summary,
+            filters,
+            more_transactions,
+            nonce: ctx.nonce,
+            summary,
+            transactions,
+            user,
+        };
+        dashboard.render()
+    } else {
+        let dashboard = DashboardSearchResultsTemplate {
+            filtered_summary,
+            filters,
+            more_transactions,
+            nonce: ctx.nonce,
+            summary,
+            transactions,
+        };
+        dashboard.render()
     };
 
-    let template = DashboardTemplate {
-        user,
-        transactions,
-        categories,
-        accounts,
-        summary,
-        filtered_summary,
-        pagination,
-        filters,
-        csr: ctx.csr,
-        nonce: ctx.nonce,
-    };
-
-    template
-        .render()
-        .map(Html)
+    html.map(Html)
         .map(|html| html.into_response())
         .map_err(|e| {
             tracing::error!("Template error: {}", e);

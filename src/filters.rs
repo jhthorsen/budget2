@@ -1,4 +1,13 @@
-pub fn format_amount(value: &f64) -> ::askama::Result<String> {
+pub fn extract_month(value: &str) -> askama::Result<String> {
+    let parts = value.split("-").collect::<Vec<_>>();
+    if parts.len() == 3 {
+        Ok(format!("{}-{}", *parts.first().unwrap_or(&"0000"), *parts.get(1).unwrap_or(&"01")))
+    } else {
+        Ok(value.to_string())
+    }
+}
+
+pub fn format_amount(value: &f64) -> askama::Result<String> {
     // Handle negative values
     let is_negative = *value < 0.0;
     let abs_value = value.abs();

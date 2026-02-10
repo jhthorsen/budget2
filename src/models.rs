@@ -112,14 +112,6 @@ pub struct BudgetSummary {
     pub balance: f64,
 }
 
-#[derive(Debug, Serialize)]
-pub struct PaginationInfo {
-    pub current_page: i64,
-    pub total_pages: i64,
-    pub per_page: i64,
-    pub total_items: i64,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CsvUploadSession {
     pub file_id: String,

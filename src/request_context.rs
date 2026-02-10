@@ -37,10 +37,6 @@ impl RequestContext {
             .map(|s| s.to_string())
             .unwrap_or_else(Self::generate_nonce)
     }
-
-    fn extract_csr(query: &str) -> bool {
-        query.contains("csr=true")
-    }
 }
 
 #[async_trait]
@@ -52,10 +48,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let nonce = Self::extract_nonce(&parts.headers);
-        
-        // Extract csr from query string
-        let query_string = parts.uri.query().unwrap_or("");
-        let csr = Self::extract_csr(query_string);
+        let csr = parts.headers.get("x-nonce").is_some();
 
         Ok(RequestContext { csr, nonce })
     }
