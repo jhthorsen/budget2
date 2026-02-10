@@ -4,225 +4,218 @@
 
 {% block content %}
 <section>
-            <div class="grid">
-                <div>
-                    <h1>Dashboard</h1>
-                </div>
-                <div style="text-align: right;">
-                    <a href="/import" role="button" class="secondary">Import CSV</a>
-                </div>
-            </div>
-            
-            <!-- Budget Summary -->
-            <article>
-                <header><strong>My Budget Summary</strong></header>
-                <p><small>Only includes transactions from accounts marked as "Mine"</small></p>
+    <div class="page-header">
+        <h1 style="margin: 0;">📊 Dashboard</h1>
+        <a href="/import" role="button" class="secondary">📥 Import CSV</a>
+    </div>
+    
+    <!-- Budget Summary Cards -->
+    <div class="grid" style="margin-bottom: 2rem;">
+        <div class="stat-card">
+            <p class="stat-label">Total Income</p>
+            <p class="stat-value income">{{ summary.total_income|format_amount }}</p>
+            <small style="opacity: 0.7;">From "My" accounts</small>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Total Expenses</p>
+            <p class="stat-value expense">{{ summary.total_expenses|format_amount }}</p>
+            <small style="opacity: 0.7;">From "My" accounts</small>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Balance</p>
+            <p class="stat-value {% if summary.balance >= 0.0 %}income{% else %}expense{% endif %}">{{ summary.balance|format_amount }}</p>
+            <small style="opacity: 0.7;">Net position</small>
+        </div>
+    </div>
+
+    <!-- Filter Panel -->
+    <details open>
+        <summary role="button" class="secondary">🔍 Filter Transactions</summary>
+        <div class="filter-panel">
+            <form method="get" action="/dashboard">
                 <div class="grid">
-                    <div>
-                        <h6>Total Income</h6>
-                        <p style="color: green; font-size: 1.5em;">{{ summary.total_income|format_amount }}</p>
-                    </div>
-                    <div>
-                        <h6>Total Expenses</h6>
-                        <p style="color: red; font-size: 1.5em;">{{ summary.total_expenses|format_amount }}</p>
-                    </div>
-                    <div>
-                        <h6>Balance</h6>
-                        <p style="font-size: 1.5em; {% if summary.balance >= 0.0 %}color: green;{% else %}color: red;{% endif %}">{{ summary.balance|format_amount }}</p>
-                    </div>
+                    <label>
+                        Search
+                        <input type="text" name="search" placeholder="Search description..." value="{% match filters.search %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}">
+                    </label>
+                    <label>
+                        Type
+                        <select name="transaction_type">
+                            <option value="all" {% if filters.transaction_type.is_none() || filters.transaction_type.as_deref() == Some("all") %}selected{% endif %}>All Types</option>
+                            <option value="income" {% if filters.transaction_type.as_deref() == Some("income") %}selected{% endif %}>💰 Income</option>
+                            <option value="expense" {% if filters.transaction_type.as_deref() == Some("expense") %}selected{% endif %}>💸 Expense</option>
+                        </select>
+                    </label>
                 </div>
-            </article>
-
-            <!-- Transactions List -->
-            <h2>Recent Transactions</h2>
-
-            <!-- Filter Form -->
-            <details open>
-                <summary role="button" class="secondary">Filter Transactions</summary>
-                <article>
-                    <form method="get" action="/dashboard">
-                        <div class="grid">
-                            <label>
-                                Search Description
-                                <input type="text" name="search" placeholder="Search..." value="{% match filters.search %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}">
-                            </label>
-                            <label>
-                                Type
-                                <select name="transaction_type">
-                                    <option value="all" {% if filters.transaction_type.is_none() || filters.transaction_type.as_deref() == Some("all") %}selected{% endif %}>All</option>
-                                    <option value="income" {% if filters.transaction_type.as_deref() == Some("income") %}selected{% endif %}>Income</option>
-                                    <option value="expense" {% if filters.transaction_type.as_deref() == Some("expense") %}selected{% endif %}>Expense</option>
-                                </select>
-                            </label>
-                        </div>
-                        <div class="grid">
-                            <label>
-                                Category
-                                <select name="category_id" id="category_filter">
-                                    <option value="">All Categories</option>
-                                    <option value="no_category">No Category</option>
-                                    {% for category in categories %}
-                                    <option value="{{ category.id }}">{{ category.name }}</option>
-                                    {% endfor %}
-                                </select>
-                                {% match filters.category_id %}
-                                    {% when Some with (cid) %}
-                                        <script>document.getElementById('category_filter').value = '{{ cid }}';</script>
-                                    {% when None %}
-                                {% endmatch %}
-                            </label>
-                            <label>
-                                Account
-                                <select name="account_id" id="account_filter">
-                                    <option value="">All Accounts</option>
-                                    {% for account in accounts %}
-                                    <option value="{{ account.id }}">{{ account.name }}</option>
-                                    {% endfor %}
-                                </select>
-                                {% match filters.account_id %}
-                                    {% when Some with (aid) %}
-                                        <script>document.getElementById('account_filter').value = '{{ aid }}';</script>
-                                    {% when None %}
-                                {% endmatch %}
-                            </label>
-                        </div>
-                        <div class="grid">
-                            <label>
-                                Date From
-                                <input type="date" name="date_from" value="{% match filters.date_from %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}">
-                            </label>
-                            <label>
-                                Date To
-                                <input type="date" name="date_to" value="{% match filters.date_to %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}">
-                            </label>
-                        </div>
-                        <input type="hidden" name="per_page" value="{{ filters.per_page }}">
-                        <div class="grid">
-                            <button type="submit">Apply Filters</button>
-                            <a href="/dashboard" role="button" class="secondary">Clear Filters</a>
-                        </div>
-                    </form>
-                </article>
-            </details>
-
-            {% if transactions.is_empty() %}
-                <p>No transactions found matching your filters.</p>
-            {% else %}
-                <!-- Filtered Summary -->
-                <article style="margin-bottom: 1rem;">
-                    <div class="grid">
-                        <div>
-                            <h6>Filtered Income</h6>
-                            <p style="color: green; font-size: 1.2em;">{{ filtered_summary.total_income|format_amount }}</p>
-                        </div>
-                        <div>
-                            <h6>Filtered Expenses</h6>
-                            <p style="color: red; font-size: 1.2em;">{{ filtered_summary.total_expenses|format_amount }}</p>
-                        </div>
-                        <div>
-                            <h6>Filtered Balance</h6>
-                            <p style="font-size: 1.2em; {% if filtered_summary.balance >= 0.0 %}color: green;{% else %}color: red;{% endif %}">{{ filtered_summary.balance|format_amount }}</p>
-                        </div>
-                    </div>
-                </article>
-
-                <figure>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Account</th>
-                                <th>Category</th>
-                                <th>Type</th>
-                                <th>Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for transaction in transactions %}
-                            <tr>
-                                <td>{{ transaction.transaction_date }}</td>
-                                <td>{{ transaction.description }}</td>
-                                <td>
-                                    {% match transaction.account_name %}
-                                        {% when Some with (account_name) %}
-                                            {{ account_name }}
-                                        {% when None %}
-                                            {% match transaction.account %}
-                                                {% when Some with (account) %}
-                                                    {{ account }}
-                                                {% when None %}
-                                                    <em>-</em>
-                                            {% endmatch %}
-                                    {% endmatch %}
-                                </td>
-                                <td>
-                                    {% match transaction.category_name %}
-                                        {% when Some with (name) %}
-                                            {% match transaction.category_color %}
-                                                {% when Some with (color) %}
-                                                    <span style="display: inline-block; width: 12px; height: 12px; background-color: {{ color }}; border-radius: 50%; margin-right: 5px;"></span>
-                                                {% when None %}
-                                            {% endmatch %}
-                                            {{ name }}
-                                        {% when None %}
-                                            <em>None</em>
-                                    {% endmatch %}
-                                </td>
-                                <td>
-                                    {% if transaction.transaction_type == "income" %}
-                                        <span style="color: green;">Income</span>
-                                    {% else %}
-                                        <span style="color: red;">Expense</span>
-                                    {% endif %}
-                                </td>
-                                <td style="text-align: right; {% if transaction.transaction_type == "income" %}color: green;{% else %}color: red;{% endif %}">
-                                    {% if transaction.transaction_type == "income" %}+{% else %}-{% endif %}{{ transaction.amount|format_amount }}
-                                </td>
-                            </tr>
+                <div class="grid">
+                    <label>
+                        Category
+                        <select name="category_id" id="category_filter">
+                            <option value="">All Categories</option>
+                            <option value="no_category">⚠️ No Category</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}">{{ category.name }}</option>
                             {% endfor %}
-                        </tbody>
-                    </table>
-                </figure>
-
-                <!-- Pagination Controls -->
-                {% if pagination.total_pages > 1 %}
-                <nav aria-label="Pagination">
-                    <ul style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; list-style: none; padding: 0;">
-                        <!-- Previous Button -->
-                        {% if pagination.current_page > 1 %}
-                            <li><a href="/dashboard?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" role="button" class="secondary">‹ Previous</a></li>
-                        {% else %}
-                            <li><a role="button" class="secondary" disabled style="opacity: 0.5; pointer-events: none;">‹ Previous</a></li>
-                        {% endif %}
-
-                        <!-- Page Numbers -->
-                        <li style="margin: 0 1rem;">
-                            Page {{ pagination.current_page }} of {{ pagination.total_pages }}
-                            <small style="display: block; color: #666;">({{ pagination.total_items }} total)</small>
-                        </li>
-
-                        <!-- Next Button -->
-                        {% if pagination.current_page < pagination.total_pages %}
-                            <li><a href="/dashboard?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" role="button" class="secondary">Next ›</a></li>
-                        {% else %}
-                            <li><a role="button" class="secondary" disabled style="opacity: 0.5; pointer-events: none;">Next ›</a></li>
-                        {% endif %}
-                    </ul>
-                </nav>
-
-                <!-- Items per page selector -->
-                <div style="text-align: center; margin-top: 1rem;">
-                    <small>
-                        Show: 
-                        <a href="/dashboard?page=1&per_page=10{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 10 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>10</a> |
-                        <a href="/dashboard?page=1&per_page=20{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 20 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>20</a> |
-                        <a href="/dashboard?page=1&per_page=50{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 50 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>50</a> |
-                        <a href="/dashboard?page=1&per_page=100{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 100 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>100</a>
-                        per page
-                    </small>
+                        </select>
+                        {% match filters.category_id %}
+                            {% when Some with (cid) %}
+                                <script>document.getElementById('category_filter').value = '{{ cid }}';</script>
+                            {% when None %}
+                        {% endmatch %}
+                    </label>
+                    <label>
+                        Account
+                        <select name="account_id" id="account_filter">
+                            <option value="">All Accounts</option>
+                            {% for account in accounts %}
+                            <option value="{{ account.id }}">{{ account.name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% match filters.account_id %}
+                            {% when Some with (aid) %}
+                                <script>document.getElementById('account_filter').value = '{{ aid }}';</script>
+                            {% when None %}
+                        {% endmatch %}
+                    </label>
                 </div>
+                <div class="grid">
+                    <label>
+                        Date From
+                        <input type="date" name="date_from" value="{% match filters.date_from %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}">
+                    </label>
+                    <label>
+                        Date To
+                        <input type="date" name="date_to" value="{% match filters.date_to %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}">
+                    </label>
+                </div>
+                <input type="hidden" name="per_page" value="{{ filters.per_page }}">
+                <div class="grid">
+                    <button type="submit">Apply Filters</button>
+                    <a href="/dashboard" role="button" class="secondary">Clear All</a>
+                </div>
+            </form>
+        </div>
+    </details>
+
+    {% if transactions.is_empty() %}
+        <article style="text-align: center; padding: 3rem;">
+            <p style="font-size: 3rem; margin: 0;">📭</p>
+            <h3>No transactions found</h3>
+            <p>Try adjusting your filters or <a href="/add">add a new transaction</a></p>
+        </article>
+    {% else %}
+        <!-- Filtered Summary -->
+        <div class="grid" style="margin: 2rem 0;">
+            <div class="stat-card">
+                <p class="stat-label">Filtered Income</p>
+                <p class="stat-value income" style="font-size: 1.5rem;">{{ filtered_summary.total_income|format_amount }}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Filtered Expenses</p>
+                <p class="stat-value expense" style="font-size: 1.5rem;">{{ filtered_summary.total_expenses|format_amount }}</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Filtered Balance</p>
+                <p class="stat-value {% if filtered_summary.balance >= 0.0 %}income{% else %}expense{% endif %}" style="font-size: 1.5rem;">{{ filtered_summary.balance|format_amount }}</p>
+            </div>
+        </div>
+
+        <!-- Transactions Table -->
+        <figure style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Account</th>
+                        <th>Category</th>
+                        <th>Type</th>
+                        <th style="text-align: right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transaction in transactions %}
+                    <tr class="transaction-row">
+                        <td><small>{{ transaction.transaction_date }}</small></td>
+                        <td><strong>{{ transaction.description }}</strong></td>
+                        <td>
+                            {% match transaction.account_name %}
+                                {% when Some with (account_name) %}
+                                    {{ account_name }}
+                                {% when None %}
+                                    {% match transaction.account %}
+                                        {% when Some with (account) %}
+                                            {{ account }}
+                                        {% when None %}
+                                            <em style="opacity: 0.5;">-</em>
+                                    {% endmatch %}
+                            {% endmatch %}
+                        </td>
+                        <td>
+                            {% match transaction.category_name %}
+                                {% when Some with (name) %}
+                                    {% match transaction.category_color %}
+                                        {% when Some with (color) %}
+                                            <span class="category-dot" style="background-color: {{ color }};"></span>
+                                        {% when None %}
+                                    {% endmatch %}
+                                    {{ name }}
+                                {% when None %}
+                                    <em style="opacity: 0.5;">No category</em>
+                            {% endmatch %}
+                        </td>
+                        <td>
+                            {% if transaction.transaction_type == "income" %}
+                                <span class="badge badge-income">Income</span>
+                            {% else %}
+                                <span class="badge badge-expense">Expense</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: right;">
+                            <strong class="{% if transaction.transaction_type == "income" %}income{% else %}expense{% endif %}">
+                                {% if transaction.transaction_type == "income" %}+{% else %}-{% endif %}{{ transaction.amount|format_amount }}
+                            </strong>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </figure>
+
+        <!-- Pagination Controls -->
+        {% if pagination.total_pages > 1 %}
+        <nav aria-label="Pagination" style="margin-top: 2rem;">
+            <ul style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; list-style: none; padding: 0;">
+                {% if pagination.current_page > 1 %}
+                    <li><a href="/dashboard?page={{ pagination.current_page - 1 }}&per_page={{ pagination.per_page }}{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" role="button" class="secondary">‹ Previous</a></li>
+                {% else %}
+                    <li><a role="button" class="secondary" disabled style="opacity: 0.5; pointer-events: none;">‹ Previous</a></li>
                 {% endif %}
-            {% endif %}
+
+                <li style="margin: 0 1rem; text-align: center;">
+                    <strong>Page {{ pagination.current_page }} of {{ pagination.total_pages }}</strong>
+                    <small style="display: block; opacity: 0.7;">{{ pagination.total_items }} total items</small>
+                </li>
+
+                {% if pagination.current_page < pagination.total_pages %}
+                    <li><a href="/dashboard?page={{ pagination.current_page + 1 }}&per_page={{ pagination.per_page }}{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" role="button" class="secondary">Next ›</a></li>
+                {% else %}
+                    <li><a role="button" class="secondary" disabled style="opacity: 0.5; pointer-events: none;">Next ›</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+
+        <!-- Items per page selector -->
+        <div style="text-align: center; margin-top: 1rem;">
+            <small style="opacity: 0.7;">
+                Items per page: 
+                <a href="/dashboard?page=1&per_page=10{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 10 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>10</a> | 
+                <a href="/dashboard?page=1&per_page=20{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 20 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>20</a> | 
+                <a href="/dashboard?page=1&per_page=50{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 50 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>50</a> | 
+                <a href="/dashboard?page=1&per_page=100{% match filters.search %}{% when Some with (s) %}&search={{ s }}{% when None %}{% endmatch %}{% match filters.transaction_type %}{% when Some with (t) %}&transaction_type={{ t }}{% when None %}{% endmatch %}{% match filters.category_id %}{% when Some with (c) %}&category_id={{ c }}{% when None %}{% endmatch %}{% match filters.account_id %}{% when Some with (a) %}&account_id={{ a }}{% when None %}{% endmatch %}{% match filters.date_from %}{% when Some with (d) %}&date_from={{ d }}{% when None %}{% endmatch %}{% match filters.date_to %}{% when Some with (d) %}&date_to={{ d }}{% when None %}{% endmatch %}" {% if pagination.per_page == 100 %}style="font-weight: bold; text-decoration: underline;"{% endif %}>100</a>
+            </small>
+        </div>
+        {% endif %}
+    {% endif %}
 </section>
 {% endblock %}
