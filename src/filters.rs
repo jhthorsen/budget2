@@ -18,12 +18,12 @@ pub fn format_amount(value: &f64) -> ::askama::Result<String> {
         result.push(*ch);
         let remaining = len - i - 1;
         if remaining > 0 && remaining % 3 == 0 {
-            result.push('.');
+            result.push(',');
         }
     }
     
     // Format with comma as decimal separator (European style)
-    let final_result = format!("{},{}", result, decimal_part);
+    let final_result = format!("{}.{}", result, decimal_part);
     
     if is_negative {
         Ok(format!("-{}", final_result))
