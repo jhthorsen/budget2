@@ -9,7 +9,7 @@ pub mod login;
 pub mod logout;
 pub mod callback;
 pub mod add_transaction;
-pub mod account;
+pub mod settings;
 
 use serde::{Deserialize, Serialize};
 

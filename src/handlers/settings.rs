@@ -12,8 +12,8 @@ use crate::{
 };
 
 #[derive(Template)]
-#[template(path = "account.html")]
-struct AccountTemplate {
+#[template(path = "settings.html")]
+struct SettingsTemplate {
     user: User,
     categories: Vec<Category>,
     accounts: Vec<AccountWithOwnership>,
@@ -21,7 +21,7 @@ struct AccountTemplate {
     nonce: String,
 }
 
-pub async fn account_page(
+pub async fn settings_page(
     State(state): State<AppState>,
     session: Session,
     ctx: RequestContext,
@@ -64,7 +64,7 @@ pub async fn account_page(
             .into_response()
     })?;
 
-    let template = AccountTemplate {
+    let template = SettingsTemplate {
         user,
         categories,
         accounts,
