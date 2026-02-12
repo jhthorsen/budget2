@@ -513,10 +513,104 @@ async fn fetch_chart_data(
         }
     }
 
+    // Calculate totals and pie chart data
+    let mut income_totals: HashMap<String, (f64, String)> = HashMap::new();
+    let mut expense_totals: HashMap<String, (f64, String)> = HashMap::new();
+    let mut total_income = 0.0;
+    let mut total_expenses = 0.0;
+
+    for day in &days {
+        for stack in &day.income_stacks {
+            let entry = income_totals.entry(stack.category_name.clone())
+                .or_insert((0.0, stack.category_color.clone()));
+            entry.0 += stack.amount;
+            total_income += stack.amount;
+        }
+        for stack in &day.expense_stacks {
+            let entry = expense_totals.entry(stack.category_name.clone())
+                .or_insert((0.0, stack.category_color.clone()));
+            entry.0 += stack.amount;
+            total_expenses += stack.amount;
+        }
+    }
+
+    // Create pie slices for income
+    let mut income_pie_slices = Vec::new();
+    let mut current_angle = -90.0;
+    const CENTER: i32 = 150;
+    const RADIUS: i32 = 100;
+    
+    for (name, (amount, color)) in income_totals.iter() {
+        if total_income > 0.0 {
+            let percentage = amount / total_income;
+            let angle = percentage * 360.0;
+            let end_angle = current_angle + angle;
+            
+            let start_rad = current_angle * std::f64::consts::PI / 180.0;
+            let end_rad = end_angle * std::f64::consts::PI / 180.0;
+            let start_x = CENTER + (RADIUS as f64 * start_rad.cos()) as i32;
+            let start_y = CENTER + (RADIUS as f64 * start_rad.sin()) as i32;
+            let end_x = CENTER + (RADIUS as f64 * end_rad.cos()) as i32;
+            let end_y = CENTER + (RADIUS as f64 * end_rad.sin()) as i32;
+            let large_arc = if angle > 180.0 { 1 } else { 0 };
+            
+            income_pie_slices.push(PieSlice {
+                name: name.clone(),
+                color: color.clone(),
+                amount: *amount,
+                percentage: (percentage * 100.0) as i32,
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+                large_arc,
+            });
+            
+            current_angle = end_angle;
+        }
+    }
+
+    // Create pie slices for expenses
+    let mut expense_pie_slices = Vec::new();
+    let mut current_angle = -90.0;
+    for (name, (amount, color)) in expense_totals.iter() {
+        if total_expenses > 0.0 {
+            let percentage = amount / total_expenses;
+            let angle = percentage * 360.0;
+            let end_angle = current_angle + angle;
+            
+            let start_rad = current_angle * std::f64::consts::PI / 180.0;
+            let end_rad = end_angle * std::f64::consts::PI / 180.0;
+            let start_x = CENTER + (RADIUS as f64 * start_rad.cos()) as i32;
+            let start_y = CENTER + (RADIUS as f64 * start_rad.sin()) as i32;
+            let end_x = CENTER + (RADIUS as f64 * end_rad.cos()) as i32;
+            let end_y = CENTER + (RADIUS as f64 * end_rad.sin()) as i32;
+            let large_arc = if angle > 180.0 { 1 } else { 0 };
+            
+            expense_pie_slices.push(PieSlice {
+                name: name.clone(),
+                color: color.clone(),
+                amount: *amount,
+                percentage: (percentage * 100.0) as i32,
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+                large_arc,
+            });
+            
+            current_angle = end_angle;
+        }
+    }
+
     Ok(ChartData {
         days,
         max_income,
         max_expenses,
+        total_income,
+        total_expenses,
         all_categories,
+        income_pie_slices,
+        expense_pie_slices,
     })
 }

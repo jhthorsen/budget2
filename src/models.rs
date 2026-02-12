@@ -203,9 +203,26 @@ pub struct DayStack {
 }
 
 #[derive(Debug, Serialize)]
+pub struct PieSlice {
+    pub name: String,
+    pub color: String,
+    pub amount: f64,
+    pub percentage: i32,
+    pub start_x: i32,
+    pub start_y: i32,
+    pub end_x: i32,
+    pub end_y: i32,
+    pub large_arc: i32,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ChartData {
     pub days: Vec<DayStack>,
     pub max_income: f64,
     pub max_expenses: f64,
+    pub total_income: f64,
+    pub total_expenses: f64,
     pub all_categories: Vec<(String, String)>, // (name, color) for legend
+    pub income_pie_slices: Vec<PieSlice>,
+    pub expense_pie_slices: Vec<PieSlice>,
 }

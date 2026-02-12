@@ -1,0 +1,147 @@
+<div id="pie_charts" style="margin-bottom: 2rem;">
+  <!-- Totals Display -->
+  <div class="grid" style="margin-bottom: 1.5rem;">
+    <div style="text-align: center; padding: 1rem; background: var(--pico-card-background-color); border-radius: 0.5rem;">
+      <div style="font-size: 0.875rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Total Expenses</div>
+      <div style="font-size: 1.5rem; font-weight: 700; color: var(--expense-color);">${{ chart_data.total_expenses|format_amount }}</div>
+    </div>
+    <div style="text-align: center; padding: 1rem; background: var(--pico-card-background-color); border-radius: 0.5rem;">
+      <div style="font-size: 0.875rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Total Income</div>
+      <div style="font-size: 1.5rem; font-weight: 700; color: var(--income-color);">${{ chart_data.total_income|format_amount }}</div>
+    </div>
+  </div>
+
+  {% if !chart_data.days.is_empty() %}
+  <div id="pie_chart_container" style="position: relative;">
+    <h3 style="text-align: center; margin-bottom: 1rem; font-size: 1.125rem;">Distribution by {% if filters.category_id > 0 %}Account{% else %}Category{% endif %}</h3>
+    
+    <!-- Tooltip for pie charts -->
+    <div id="pie_tooltip" style="position: absolute; display: none; background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color); padding: 0.5rem 0.75rem; border-radius: 0.25rem; pointer-events: none; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-size: 0.875rem; white-space: nowrap;"></div>
+    
+    <div class="grid" style="gap: 2rem;">
+      <!-- Expense Pie Chart -->
+      <div style="text-align: center;">
+        <div style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; opacity: 0.8;">Expenses</div>
+        <svg id="expense_pie" viewBox="0 0 300 300" style="width: 100%; max-width: 300px; height: auto; background: var(--pico-card-background-color); border-radius: 0.5rem; padding: 1rem; margin: 0 auto; display: block;">
+          {% if chart_data.total_expenses > 0.0 %}
+            {% for slice in chart_data.expense_pie_slices %}
+              <path
+                class="pie-slice"
+                data-category="{{ slice.name }}"
+                data-amount="{{ slice.amount|format_amount }}"
+                data-percentage="{{ slice.percentage }}"
+                data-type="expense"
+                d="M 150 150 L {{ slice.start_x }} {{ slice.start_y }} A 100 100 0 {{ slice.large_arc }} 1 {{ slice.end_x }} {{ slice.end_y }} Z"
+                fill="{{ slice.color }}"
+                opacity="0.85"
+                style="cursor: pointer; transition: opacity 0.2s;"
+              />
+            {% endfor %}
+          {% else %}
+            <text x="150" y="150" text-anchor="middle" font-size="14" fill="currentColor" opacity="0.5">No expense data</text>
+          {% endif %}
+        </svg>
+      </div>
+      
+      <!-- Income Pie Chart -->
+      <div style="text-align: center;">
+        <div style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; opacity: 0.8;">Income</div>
+        <svg id="income_pie" viewBox="0 0 300 300" style="width: 100%; max-width: 300px; height: auto; background: var(--pico-card-background-color); border-radius: 0.5rem; padding: 1rem; margin: 0 auto; display: block;">
+          {% if chart_data.total_income > 0.0 %}
+            {% for slice in chart_data.income_pie_slices %}
+              <path
+                class="pie-slice"
+                data-category="{{ slice.name }}"
+                data-amount="{{ slice.amount|format_amount }}"
+                data-percentage="{{ slice.percentage }}"
+                data-type="income"
+                d="M 150 150 L {{ slice.start_x }} {{ slice.start_y }} A 100 100 0 {{ slice.large_arc }} 1 {{ slice.end_x }} {{ slice.end_y }} Z"
+                fill="{{ slice.color }}"
+                opacity="0.85"
+                style="cursor: pointer; transition: opacity 0.2s;"
+              />
+            {% endfor %}
+          {% else %}
+            <text x="150" y="150" text-anchor="middle" font-size="14" fill="currentColor" opacity="0.5">No income data</text>
+          {% endif %}
+        </svg>
+      </div>
+    </div>
+  </div>
+  
+  <style>
+    .pie-slice.dimmed {
+      opacity: 0.3 !important;
+    }
+    
+    .pie-slice:hover {
+      opacity: 1 !important;
+    }
+  </style>
+  
+  <script nonce="{{ ctx.nonce }}">
+    (function() {
+      const pieTooltip = document.getElementById('pie_tooltip');
+      const pieSlices = document.querySelectorAll('.pie-slice');
+      const legendItems = document.querySelectorAll('.legend-item');
+      const barChartBars = document.querySelectorAll('.chart-bar');
+      
+      // Pie slice hover handlers
+      pieSlices.forEach(slice => {
+        slice.addEventListener('mouseenter', function(e) {
+          const category = this.dataset.category;
+          const amount = this.dataset.amount;
+          const percentage = this.dataset.percentage;
+          const type = this.dataset.type;
+          
+          // Show tooltip
+          const typeLabel = type === 'income' ? 'Income' : 'Expense';
+          pieTooltip.innerHTML = `<strong>${category}</strong><br>${typeLabel}: $${amount}<br>${percentage}%`;
+          pieTooltip.style.display = 'block';
+          
+          // Dim other slices and bars
+          pieSlices.forEach(s => {
+            if (s.dataset.category !== category) {
+              s.classList.add('dimmed');
+            }
+          });
+          
+          if (barChartBars) {
+            barChartBars.forEach(b => {
+              if (b.dataset.category !== category) {
+                b.classList.add('dimmed');
+              }
+            });
+          }
+          
+          // Highlight legend
+          if (legendItems) {
+            legendItems.forEach(item => {
+              if (item.dataset.category === category) {
+                item.classList.add('highlighted');
+              }
+            });
+          }
+        });
+        
+        slice.addEventListener('mousemove', function(e) {
+          const rect = document.getElementById('pie_chart_container').getBoundingClientRect();
+          pieTooltip.style.left = (e.clientX - rect.left + 15) + 'px';
+          pieTooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+        });
+        
+        slice.addEventListener('mouseleave', function() {
+          pieTooltip.style.display = 'none';
+          pieSlices.forEach(s => s.classList.remove('dimmed'));
+          if (barChartBars) {
+            barChartBars.forEach(b => b.classList.remove('dimmed'));
+          }
+          if (legendItems) {
+            legendItems.forEach(item => item.classList.remove('highlighted'));
+          }
+        });
+      });
+    })();
+  </script>
+  {% endif %}
+</div>

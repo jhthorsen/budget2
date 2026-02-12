@@ -7,6 +7,8 @@
     <h1>📊 Dashboard</h1>
   </header>
 
+  {% include "dashboard/pie_charts.html" %}
+
   {% include "dashboard/stacked_bar_chart.html" %}
 
   <form method="get" action="/dashboard?filtered=true" id="form_filter">
