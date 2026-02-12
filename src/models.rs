@@ -182,3 +182,30 @@ pub struct User {
     pub oauth_id: String,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CategoryStack {
+    pub category_id: Option<i64>,
+    pub category_name: String,
+    pub category_color: String,
+    pub amount: f64,
+    pub y_pos: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DayStack {
+    pub day: i64,
+    pub income_stacks: Vec<CategoryStack>,
+    pub expense_stacks: Vec<CategoryStack>,
+    pub total_income: f64,
+    pub total_expenses: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChartData {
+    pub days: Vec<DayStack>,
+    pub max_income: f64,
+    pub max_expenses: f64,
+    pub all_categories: Vec<(String, String)>, // (name, color) for legend
+}

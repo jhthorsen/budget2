@@ -1,0 +1,184 @@
+<div id="chart_container" style="width: 100%; margin-bottom: 2rem; position: relative;">
+  {% if chart_data.days.is_empty() %}
+    <p style="text-align: center; padding: 2rem; opacity: 0.7;">No transaction data for the selected period</p>
+  {% else %}
+    <!-- Tooltip for displaying values -->
+    <div id="chart_tooltip" style="position: absolute; display: none; background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color); padding: 0.5rem 0.75rem; border-radius: 0.25rem; pointer-events: none; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-size: 0.875rem; white-space: nowrap;"></div>
+
+    <svg id="chart_svg" viewBox="0 0 900 400" style="width: 100%; height: auto; background: var(--pico-card-background-color); border-radius: 0.5rem; padding: 1rem;">
+      <!-- Y-axis -->
+      <line x1="60" y1="20" x2="60" y2="340" stroke="currentColor" stroke-opacity="0.3" stroke-width="1"/>
+
+      <!-- Zero line (horizontal at middle) -->
+      <line x1="60" y1="180" x2="880" y2="180" stroke="currentColor" stroke-opacity="0.5" stroke-width="2"/>
+
+      <!-- Grid lines -->
+      <line x1="60" y1="60" x2="880" y2="60" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
+      <line x1="60" y1="100" x2="880" y2="100" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
+      <line x1="60" y1="140" x2="880" y2="140" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
+      <line x1="60" y1="220" x2="880" y2="220" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
+      <line x1="60" y1="260" x2="880" y2="260" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
+      <line x1="60" y1="300" x2="880" y2="300" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
+
+      <!-- Bars for each day -->
+      {% for day_stack in chart_data.days %}
+        {% let x_pos = 60 + (day_stack.day - 1) * 820 / 31 %}
+        {% let bar_w = 820 / 31 - 2 %}
+
+        <!-- Expense stacks (going down from 180) -->
+        {% for stack in day_stack.expense_stacks %}
+          <rect
+            class="chart-bar"
+            data-category="{{ stack.category_name }}"
+            data-day="{{ day_stack.day }}"
+            data-amount="{{ stack.amount|format_amount }}"
+            data-type="expense"
+            x="{{ x_pos + 1 }}"
+            y="{{ stack.y_pos }}"
+            width="{{ bar_w }}"
+            height="{{ stack.height }}"
+            fill="{{ stack.category_color }}"
+            opacity="0.85"
+            style="cursor: pointer; transition: opacity 0.2s;">
+          </rect>
+        {% endfor %}
+
+        <!-- Income stacks (going up from 180) -->
+        {% for stack in day_stack.income_stacks %}
+          <rect
+            class="chart-bar"
+            data-category="{{ stack.category_name }}"
+            data-day="{{ day_stack.day }}"
+            data-amount="{{ stack.amount|format_amount }}"
+            data-type="income"
+            x="{{ x_pos + 1 }}"
+            y="{{ stack.y_pos }}"
+            width="{{ bar_w }}"
+            height="{{ stack.height }}"
+            fill="{{ stack.category_color }}"
+            opacity="0.85"
+            style="cursor: pointer; transition: opacity 0.2s;">
+          </rect>
+        {% endfor %}
+      {% endfor %}
+
+      <!-- X-axis -->
+      <line x1="60" y1="340" x2="880" y2="340" stroke="currentColor" stroke-opacity="0.3" stroke-width="1"/>
+
+      <!-- X-axis labels -->
+      <text x="86" y="360" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.7">1</text>
+      <text x="324" y="360" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.7">10</text>
+      <text x="562" y="360" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.7">20</text>
+      <text x="800" y="360" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.7">30</text>
+
+      <!-- Y-axis labels (income side) -->
+      <text x="50" y="25" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">{{ chart_data.max_income|format_amount }}</text>
+      <text x="50" y="105" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">{{ (chart_data.max_income * 0.5)|format_amount }}</text>
+      <text x="50" y="185" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">0</text>
+
+      <!-- Y-axis labels (expense side) -->
+      <text x="50" y="225" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">-{{ (chart_data.max_expenses * 0.5)|format_amount }}</text>
+      <text x="50" y="305" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">-{{ chart_data.max_expenses|format_amount }}</text>
+
+      <!-- Axis titles -->
+      <text x="470" y="390" text-anchor="middle" font-size="14" fill="currentColor" opacity="0.7">Day of Month</text>
+      <text x="15" y="180" text-anchor="middle" font-size="14" fill="currentColor" opacity="0.7" transform="rotate(-90, 15, 180)">Amount</text>
+    </svg>
+
+    <!-- Legend -->
+    <div id="chart_legend" style="display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; margin-top: 1rem;">
+      {% for (name, color) in chart_data.all_categories %}
+        <div class="legend-item" data-category="{{ name }}" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; transition: background-color 0.2s; cursor: pointer;">
+          <div style="width: 16px; height: 16px; background-color: {{ color }}; border-radius: 3px; opacity: 0.85;"></div>
+          <span style="font-size: 0.875rem;">{{ name }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    <style>
+      .legend-item:hover {
+        background-color: var(--pico-secondary-hover-background);
+      }
+
+      .legend-item.highlighted {
+        background-color: var(--pico-secondary-hover-background);
+        font-weight: 600;
+      }
+
+      .chart-bar.dimmed {
+        opacity: 0.3 !important;
+      }
+    </style>
+
+    <script nonce="{{ ctx.nonce }}">
+      (function() {
+        const tooltip = document.getElementById('chart_tooltip');
+        const svg = document.getElementById('chart_svg');
+        const bars = document.querySelectorAll('.chart-bar');
+        const legendItems = document.querySelectorAll('.legend-item');
+
+        // Bar hover handlers
+        bars.forEach(bar => {
+          bar.addEventListener('mouseenter', function(e) {
+            const category = this.dataset.category;
+            const day = this.dataset.day;
+            const amount = this.dataset.amount;
+            const type = this.dataset.type;
+
+            // Show tooltip
+            const typeLabel = type === 'income' ? 'Income' : 'Expense';
+            tooltip.innerHTML = `<strong>Day ${day}</strong><br>${category}<br>${typeLabel}: $${amount}`;
+            tooltip.style.display = 'block';
+
+            // Dim other bars
+            bars.forEach(b => {
+              if (b.dataset.category !== category) {
+                b.classList.add('dimmed');
+              }
+            });
+
+            // Highlight legend
+            legendItems.forEach(item => {
+              if (item.dataset.category === category) {
+                item.classList.add('highlighted');
+              }
+            });
+          });
+
+          bar.addEventListener('mousemove', function(e) {
+            const rect = document.getElementById('chart_container').getBoundingClientRect();
+            tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
+            tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+          });
+
+          bar.addEventListener('mouseleave', function() {
+            tooltip.style.display = 'none';
+            bars.forEach(b => b.classList.remove('dimmed'));
+            legendItems.forEach(item => item.classList.remove('highlighted'));
+          });
+        });
+
+        // Legend hover handlers
+        legendItems.forEach(item => {
+          item.addEventListener('mouseenter', function() {
+            const category = this.dataset.category;
+
+            // Highlight matching bars
+            bars.forEach(bar => {
+              if (bar.dataset.category !== category) {
+                bar.classList.add('dimmed');
+              }
+            });
+
+            this.classList.add('highlighted');
+          });
+
+          item.addEventListener('mouseleave', function() {
+            bars.forEach(bar => bar.classList.remove('dimmed'));
+            this.classList.remove('highlighted');
+          });
+        });
+      })();
+    </script>
+  {% endif %}
+</div>

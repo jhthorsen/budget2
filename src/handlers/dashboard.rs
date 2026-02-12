@@ -10,6 +10,7 @@ struct DashboardTemplate {
     ctx: RequestContext,
     accounts: Vec<AccountWithOwnership>,
     categories: Vec<Category>,
+    chart_data: ChartData,
     filtered_summary: BudgetSummary,
     filters: TransactionFilters,
     more_transactions: bool,
@@ -22,6 +23,7 @@ struct DashboardTemplate {
 #[template(path = "dashboard/search_results.html")]
 struct DashboardSearchResultsTemplate {
     ctx: RequestContext,
+    chart_data: ChartData,
     filtered_summary: BudgetSummary,
     filters: TransactionFilters,
     more_transactions: bool,
@@ -93,7 +95,7 @@ pub async fn dashboard_handler(
     // Get transactions
     let select_query = format!(
         r#"
-        SELECT 
+        SELECT
             t.id,
             t.amount,
             t.description,
@@ -161,7 +163,7 @@ pub async fn dashboard_handler(
     // Calculate filtered summary
     let filtered_summary_query = format!(
         r#"
-        SELECT 
+        SELECT
             CAST(COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_income,
             CAST(COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_expenses
         FROM transactions t
@@ -186,9 +188,16 @@ pub async fn dashboard_handler(
         balance: filtered_result.total_income - filtered_result.total_expenses,
     };
 
+    // Fetch chart data - group by account if single category selected, otherwise by category
+    let group_by_account = filters.category_id > 0;
+    let chart_data = fetch_chart_data(&state.pool, &where_clause, &params, &filters.month, group_by_account)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to fetch chart data"))?;
+
     if filters.filtered {
         let template = DashboardSearchResultsTemplate {
             ctx,
+            chart_data,
             filtered_summary,
             filters,
             more_transactions,
@@ -206,6 +215,7 @@ pub async fn dashboard_handler(
             ctx,
             accounts,
             categories,
+            chart_data,
             filtered_summary,
             filters,
             more_transactions,
@@ -225,12 +235,12 @@ pub async fn dashboard_handler(
 async fn calculate_summary(pool: &SqlitePool, user_id: i64) -> Result<BudgetSummary, sqlx::Error> {
     let result = sqlx::query_as::<_, SummaryRow>(
         r#"
-        SELECT 
+        SELECT
             CAST(COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_income,
             CAST(COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_expenses
         FROM transactions t
         LEFT JOIN user_accounts ua ON t.account_id = ua.account_id AND ua.user_id = ?
-        WHERE t.user_id = ? 
+        WHERE t.user_id = ?
           AND (t.account_id IS NULL OR ua.is_mine = 1)
         "#,
     )
@@ -243,5 +253,270 @@ async fn calculate_summary(pool: &SqlitePool, user_id: i64) -> Result<BudgetSumm
         total_income: result.total_income,
         total_expenses: result.total_expenses,
         balance: result.total_income - result.total_expenses,
+    })
+}
+
+async fn fetch_chart_data(
+    pool: &SqlitePool,
+    where_clause: &str,
+    params: &[String],
+    month: &str,
+    group_by_account: bool,
+) -> Result<ChartData, sqlx::Error> {
+    use std::collections::HashMap;
+
+    // Professional color palette optimized for both light and dark modes
+    // Using OKLCH color space for perceptually uniform colors
+    fn get_professional_palette() -> Vec<&'static str> {
+        vec![
+            "oklch(65% 0.20 250)",  // Blue
+            "oklch(70% 0.19 145)",  // Green
+            "oklch(75% 0.20 50)",   // Orange
+            "oklch(68% 0.20 320)",  // Purple
+            "oklch(72% 0.18 180)",  // Cyan
+            "oklch(70% 0.20 25)",   // Red-Orange
+            "oklch(65% 0.15 280)",  // Indigo
+            "oklch(73% 0.17 85)",   // Yellow-Green
+            "oklch(68% 0.18 350)",  // Magenta
+            "oklch(70% 0.16 200)",  // Sky Blue
+            "oklch(60% 0.10 270)",  // Other (muted purple-gray)
+        ]
+    }
+
+    fn assign_color(category_color: Option<String>, index: usize, is_income: bool) -> String {
+        if let Some(color) = category_color {
+            if !color.is_empty() {
+                return color;
+            }
+        }
+
+        let palette = get_professional_palette();
+        if is_income {
+            // Use green tones for income
+            "oklch(68% 0.18 145)".to_string()
+        } else {
+            // Use palette colors for expenses
+            palette[index % palette.len()].to_string()
+        }
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct DayData {
+        day: i64,
+        group_id: Option<i64>,
+        group_name: Option<String>,
+        group_color: Option<String>,
+        transaction_type: String,
+        total: f64,
+    }
+
+    // Query to get daily aggregates by category or account
+    let query = if group_by_account {
+        format!(
+            r#"
+            SELECT
+                CAST(strftime('%d', t.transaction_date) AS INTEGER) as day,
+                t.account_id as group_id,
+                COALESCE(a.name, 'No Account') as group_name,
+                NULL as group_color,
+                t.type as transaction_type,
+                CAST(SUM(t.amount) AS REAL) as total
+            FROM transactions t
+            LEFT JOIN accounts a ON t.account_id = a.id
+            WHERE {}
+            GROUP BY day, t.account_id, t.type
+            ORDER BY day, t.type, total DESC
+            "#,
+            where_clause
+        )
+    } else {
+        format!(
+            r#"
+            SELECT
+                CAST(strftime('%d', t.transaction_date) AS INTEGER) as day,
+                t.category_id as group_id,
+                COALESCE(c.name, 'Uncategorized') as group_name,
+                c.color as group_color,
+                t.type as transaction_type,
+                CAST(SUM(t.amount) AS REAL) as total
+            FROM transactions t
+            LEFT JOIN categories c ON t.category_id = c.id
+            WHERE {}
+            GROUP BY day, t.category_id, t.type
+            ORDER BY day, t.type, total DESC
+            "#,
+            where_clause
+        )
+    };
+
+    let mut query_exec = sqlx::query_as::<_, DayData>(&query);
+    for param in params {
+        query_exec = query_exec.bind(param);
+    }
+    let raw_data = query_exec.fetch_all(pool).await?;
+
+    // Determine number of days in the month
+    let days_in_month = if !month.is_empty() {
+        let parts: Vec<&str> = month.split('-').collect();
+        if parts.len() == 2 {
+            if let (Ok(year), Ok(month_num)) = (parts[0].parse::<i32>(), parts[1].parse::<u32>()) {
+                chrono::NaiveDate::from_ymd_opt(
+                    year,
+                    month_num,
+                    1,
+                )
+                .and_then(|d| {
+                    if month_num == 12 {
+                        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+                    } else {
+                        chrono::NaiveDate::from_ymd_opt(year, month_num + 1, 1)
+                    }
+                    .map(|next| (next - d).num_days() as i64)
+                })
+                .unwrap_or(31)
+            } else {
+                31
+            }
+        } else {
+            31
+        }
+    } else {
+        31
+    };
+
+    // Group to find top 10 expenses
+    let mut group_totals: HashMap<(Option<i64>, String, Option<String>), f64> = HashMap::new();
+    for row in &raw_data {
+        if row.transaction_type == "expense" {
+            let key = (
+                row.group_id,
+                row.group_name.clone().unwrap_or_else(|| if group_by_account { "No Account" } else { "Uncategorized" }.to_string()),
+                row.group_color.clone(),
+            );
+            *group_totals.entry(key).or_insert(0.0) += row.total;
+        }
+    }
+
+    let mut group_vec: Vec<_> = group_totals.into_iter().collect();
+    group_vec.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Assign colors to top 10
+    let top_groups: HashMap<(Option<i64>, String), String> = group_vec
+        .iter()
+        .take(10)
+        .enumerate()
+        .map(|(idx, ((id, name, db_color), _))| {
+            let color = assign_color(db_color.clone(), idx, false);
+            ((*id, name.clone()), color)
+        })
+        .collect();
+
+    // Build legend (all unique groups in the data)
+    let mut all_categories: Vec<(String, String)> = top_groups
+        .iter()
+        .map(|((_, name), color)| (name.clone(), color.clone()))
+        .collect();
+    all_categories.sort_by(|a, b| a.0.cmp(&b.0));
+    if group_vec.len() > 10 {
+        all_categories.push(("Other".to_string(), get_professional_palette()[10].to_string()));
+    }
+
+    // Process raw data into day stacks
+    let mut days = Vec::new();
+    let mut max_income = 0.0_f64;
+    let mut max_expenses = 0.0_f64;
+
+    for day_num in 1..=days_in_month {
+        let mut income_map: HashMap<String, CategoryStack> = HashMap::new();
+        let mut expense_map: HashMap<String, CategoryStack> = HashMap::new();
+
+        for row in raw_data.iter().filter(|r| r.day == day_num) {
+            let category_key = (row.group_id, row.group_name.clone().unwrap_or_else(|| "Uncategorized".to_string()));
+
+            let (name, color) = if row.transaction_type == "expense" {
+                if let Some(color) = top_groups.get(&category_key) {
+                    (category_key.1.clone(), color.clone())
+                } else {
+                    ("Other".to_string(), get_professional_palette()[10].to_string())
+                }
+            } else {
+                (
+                    row.group_name.clone().unwrap_or_else(|| "Uncategorized".to_string()),
+                    assign_color(row.group_color.clone(), 0, true),
+                )
+            };
+
+            let stack = CategoryStack {
+                category_id: row.group_id,
+                category_name: name.clone(),
+                category_color: color.clone(),
+                amount: row.total,
+                y_pos: 0, // Will be calculated later
+                height: 0, // Will be calculated later
+            };
+
+            if row.transaction_type == "income" {
+                income_map.entry(name).and_modify(|s| s.amount += row.total).or_insert(stack);
+            } else {
+                expense_map.entry(name).and_modify(|s| s.amount += row.total).or_insert(stack);
+            }
+        }
+
+        let mut income_stacks: Vec<_> = income_map.into_values().collect();
+        let mut expense_stacks: Vec<_> = expense_map.into_values().collect();
+
+        income_stacks.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap_or(std::cmp::Ordering::Equal));
+        expense_stacks.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap_or(std::cmp::Ordering::Equal));
+
+        let total_income: f64 = income_stacks.iter().map(|s| s.amount).sum();
+        let total_expenses: f64 = expense_stacks.iter().map(|s| s.amount).sum();
+
+        max_income = max_income.max(total_income);
+        max_expenses = max_expenses.max(total_expenses);
+
+        days.push(DayStack {
+            day: day_num,
+            income_stacks,
+            expense_stacks,
+            total_income,
+            total_expenses,
+        });
+    }
+
+    // Second pass: calculate positions now that we know max values
+    const ZERO_Y: i32 = 180;
+    const MAX_HEIGHT: f64 = 160.0;
+
+    for day in &mut days {
+        let mut y_pos = ZERO_Y;
+        for stack in &mut day.expense_stacks {
+            let height = if max_expenses > 0.0 {
+                (stack.amount * MAX_HEIGHT / max_expenses) as i32
+            } else {
+                0
+            };
+            stack.y_pos = y_pos;
+            stack.height = height;
+            y_pos += height;
+        }
+
+        let mut y_pos = ZERO_Y;
+        for stack in &mut day.income_stacks {
+            let height = if max_income > 0.0 {
+                (stack.amount * MAX_HEIGHT / max_income) as i32
+            } else {
+                0
+            };
+            y_pos -= height;
+            stack.y_pos = y_pos;
+            stack.height = height;
+        }
+    }
+
+    Ok(ChartData {
+        days,
+        max_income,
+        max_expenses,
+        all_categories,
     })
 }
