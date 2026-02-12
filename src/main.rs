@@ -64,6 +64,7 @@ async fn main() {
 
     let app = axum::Router::new()
         .route("/", get(handlers::auth::index_handler))
+        .route("/static/:file", get(handlers::static_files::get))
         .route("/auth/callback", get(handlers::callback::auth_callback))
         .route("/login", get(handlers::auth::login_handler))
         .route("/logout", get(handlers::auth::logout_handler))

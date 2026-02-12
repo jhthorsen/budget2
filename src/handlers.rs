@@ -9,6 +9,7 @@ pub mod csv;
 pub mod dashboard;
 pub mod rules;
 pub mod settings;
+pub mod static_files;
 pub mod transactions;
 
 #[derive(Template)]

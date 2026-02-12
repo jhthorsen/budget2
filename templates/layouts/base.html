@@ -8,7 +8,7 @@
     <meta name="nonce" content="{{ ctx.nonce }}">
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'nonce-{{ ctx.nonce }}'">
     <meta name="ssr-headers" content="'x-nonce':'{{ ctx.nonce }}'">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/pico@2.css">
     <style>
       :root {
         --pico-font-size: 16px;
@@ -105,9 +105,8 @@
   </main>
 
   {% if ctx.csr == false %}
-    <script nonce="{{ ctx.nonce }}" src="https://unpkg.com/idiomorph@0.7.4"></script>
-    <script nonce="{{ ctx.nonce }}" src="https://cdn.jsdelivr.net/gh/jhthorsen/ssr.js@675e6037a82a1653a02a4be06680741bb435b40a/ssr.js"></script>
-    <!-- script nonce="{{ ctx.nonce }}" src="http://127.0.0.1:3001/ssr.js"></script -->
+    <script nonce="{{ ctx.nonce }}" src="/static/idiomorph@1.js"></script>
+    <script nonce="{{ ctx.nonce }}" src="/static/ssr@1.js"></script>
     <script nonce="{{ ctx.nonce }}">
       function notification(message) {
         return `<div class="notification" data-init="@debounce(@destroy(el), 3000)" data-swap="append:#notifications">${message}</div>`
