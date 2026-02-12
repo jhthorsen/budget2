@@ -1,24 +1,17 @@
+use crate::{models::*, request_context::RequestContext, AppState};
 use askama::Template;
 use axum::{
     extract::{Path, State},
-    response::{Html, IntoResponse, Redirect, Response},
+    response::IntoResponse,
     Form,
-};
-use tower_sessions::Session;
-
-use crate::{
-    auth::{get_current_user, AppState},
-    models::*,
-    request_context::RequestContext,
 };
 
 #[derive(Template)]
 #[template(path = "rules_list.html")]
 struct RulesListTemplate {
-    user: User,
+    ctx: RequestContext,
     grouped_rules: Vec<CategoryGroup>,
-    csr: bool,
-    nonce: String,
+    user: User,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -30,12 +23,11 @@ struct CategoryGroup {
 #[derive(Template)]
 #[template(path = "rules_form.html")]
 struct RulesFormTemplate {
-    user: User,
-    rule: Option<ImportRule>,
-    categories: Vec<Category>,
     accounts: Vec<AccountWithOwnership>,
-    csr: bool,
-    nonce: String,
+    categories: Vec<Category>,
+    ctx: RequestContext,
+    rule: Option<ImportRule>,
+    user: User,
 }
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
@@ -55,12 +47,10 @@ struct ImportRuleWithNames {
 
 pub async fn rules_list(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     ctx: RequestContext,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
     let rules = sqlx::query_as::<_, ImportRuleWithNames>(
         r#"
@@ -77,14 +67,7 @@ pub async fn rules_list(
     .bind(user.id)
     .fetch_all(&state.pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    .map_err(|err| super::db_error(err, "Unable to get list of rules"))?;
 
     // Group rules by category
     let mut grouped_rules: Vec<CategoryGroup> = Vec::new();
@@ -92,12 +75,15 @@ pub async fn rules_list(
     let mut current_rules: Vec<ImportRuleWithNames> = Vec::new();
 
     for rule in rules {
-        let category = rule.category_name.clone().unwrap_or_else(|| "No Category".to_string());
-        
+        let category = rule
+            .category_name
+            .clone()
+            .unwrap_or_else(|| "No Category".to_string());
+
         if current_category.is_none() {
             current_category = Some(category.clone());
         }
-        
+
         if Some(category.clone()) != current_category {
             // New category, push the previous group
             if let Some(cat_name) = current_category.take() {
@@ -109,7 +95,7 @@ pub async fn rules_list(
             }
             current_category = Some(category.clone());
         }
-        
+
         current_rules.push(rule);
     }
 
@@ -122,48 +108,31 @@ pub async fn rules_list(
     }
 
     let template = RulesListTemplate {
+        ctx,
         user,
         grouped_rules,
-        csr: ctx.csr,
-        nonce: ctx.nonce,
     };
-    template
+
+    Ok(template
         .render()
-        .map(Html)
-        .map(|html| html.into_response())
-        .map_err(|e| {
-            tracing::error!("Template error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Template error",
-            )
-                .into_response()
-        })
+        .map(axum::response::Html)
+        .map_err(super::template_error)?
+        .into_response())
 }
 
 pub async fn rules_new_page(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     ctx: RequestContext,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
-    let categories = sqlx::query_as::<_, Category>(
-        "SELECT * FROM categories WHERE user_id = ? ORDER BY name",
-    )
-    .bind(user.id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    let categories =
+        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
+            .bind(user.id)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|err| super::db_error(err, "Unable to get list of categories"))?;
 
     let accounts = sqlx::query_as::<_, AccountWithOwnership>(
         r#"
@@ -177,45 +146,29 @@ pub async fn rules_new_page(
     .bind(user.id)
     .fetch_all(&state.pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    .map_err(|err| super::db_error(err, "Unable to get list of accounts"))?;
 
     let template = RulesFormTemplate {
-        user,
-        rule: None,
-        categories,
         accounts,
-        csr: ctx.csr,
-        nonce: ctx.nonce,
+        categories,
+        ctx,
+        rule: None,
+        user,
     };
-    template
+
+    Ok(template
         .render()
-        .map(Html)
-        .map(|html| html.into_response())
-        .map_err(|e| {
-            tracing::error!("Template error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Template error",
-            )
-                .into_response()
-        })
+        .map(axum::response::Html)
+        .map_err(super::template_error)?
+        .into_response())
 }
 
 pub async fn rules_create(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     Form(form): Form<ImportRuleForm>,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
     let category_id = form
         .category_id
@@ -242,65 +195,34 @@ pub async fn rules_create(
     .bind(priority)
     .execute(&state.pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    .map_err(|err| super::db_error(err, "Unable to insert new rule"))?;
 
-    Ok(Redirect::to("/rules").into_response())
+    Ok(axum::response::Redirect::to("/rules").into_response())
 }
 
 pub async fn rules_edit_page(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
     ctx: RequestContext,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
-    let rule = sqlx::query_as::<_, ImportRule>(
-        "SELECT * FROM import_rules WHERE id = ? AND user_id = ?",
-    )
-    .bind(rule_id)
-    .bind(user.id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?
-    .ok_or_else(|| {
-        (
-            axum::http::StatusCode::NOT_FOUND,
-            "Rule not found",
-        )
-            .into_response()
-    })?;
+    let rule =
+        sqlx::query_as::<_, ImportRule>("SELECT * FROM import_rules WHERE id = ? AND user_id = ?")
+            .bind(rule_id)
+            .bind(user.id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|err| super::db_error(err, "Unable find rule"))?
+            .ok_or_else(|| (axum::http::StatusCode::NOT_FOUND, "Rule not found").into_response())?;
 
-    let categories = sqlx::query_as::<_, Category>(
-        "SELECT * FROM categories WHERE user_id = ? ORDER BY name",
-    )
-    .bind(user.id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    let categories =
+        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
+            .bind(user.id)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|err| super::db_error(err, "Unable to get list of categories"))?;
 
     let accounts = sqlx::query_as::<_, AccountWithOwnership>(
         r#"
@@ -314,46 +236,30 @@ pub async fn rules_edit_page(
     .bind(user.id)
     .fetch_all(&state.pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    .map_err(|err| super::db_error(err, "Unable to get list of accounts"))?;
 
     let template = RulesFormTemplate {
-        user,
-        rule: Some(rule),
-        categories,
         accounts,
-        csr: ctx.csr,
-        nonce: ctx.nonce,
+        categories,
+        ctx,
+        rule: Some(rule),
+        user,
     };
-    template
+
+    Ok(template
         .render()
-        .map(Html)
-        .map(|html| html.into_response())
-        .map_err(|e| {
-            tracing::error!("Template error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Template error",
-            )
-                .into_response()
-        })
+        .map(axum::response::Html)
+        .map_err(super::template_error)?
+        .into_response())
 }
 
 pub async fn rules_update(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
     Form(form): Form<ImportRuleForm>,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
     let category_id = form
         .category_id
@@ -382,97 +288,61 @@ pub async fn rules_update(
     .bind(user.id)
     .execute(&state.pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    .map_err(|err| super::db_error(err, "Unable to update rule"))?;
 
-    Ok(Redirect::to("/rules").into_response())
+    Ok(axum::response::Redirect::to("/rules").into_response())
 }
 
 pub async fn rules_delete(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
     sqlx::query("DELETE FROM import_rules WHERE id = ? AND user_id = ?")
         .bind(rule_id)
         .bind(user.id)
         .execute(&state.pool)
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error",
-            )
-                .into_response()
-        })?;
+        .map_err(|err| super::db_error(err, "Unable to delete rule"))?;
 
-    Ok(Redirect::to("/rules").into_response())
+    Ok(axum::response::Redirect::to("/rules").into_response())
 }
 
 pub async fn rules_apply(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
     // Fetch the specific rule
-    let rule = sqlx::query_as::<_, ImportRule>(
-        "SELECT * FROM import_rules WHERE id = ? AND user_id = ?",
-    )
-    .bind(rule_id)
-    .bind(user.id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?
-    .ok_or_else(|| {
-        (
-            axum::http::StatusCode::NOT_FOUND,
-            "Rule not found",
-        )
-            .into_response()
-    })?;
+    let rule =
+        sqlx::query_as::<_, ImportRule>("SELECT * FROM import_rules WHERE id = ? AND user_id = ?")
+            .bind(rule_id)
+            .bind(user.id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|err| super::db_error(err, "Unable to find rule"))?
+            .ok_or_else(|| (axum::http::StatusCode::NOT_FOUND, "Rule not found").into_response())?;
 
-    let transactions = sqlx::query_as::<_, Transaction>(
-        "SELECT * FROM transactions WHERE user_id = ?",
-    )
-    .bind(user.id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    let transactions =
+        sqlx::query_as::<_, Transaction>("SELECT * FROM transactions WHERE user_id = ?")
+            .bind(user.id)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|err| super::db_error(err, "Unable to find transactions"))?;
 
     let mut updated_count = 0;
     let description_lower = rule.pattern.to_lowercase();
 
     for transaction in transactions {
-        if transaction.description.to_lowercase().contains(&description_lower) {
+        if transaction
+            .description
+            .to_lowercase()
+            .contains(&description_lower)
+        {
             let mut needs_update = false;
             let mut new_category_id = transaction.category_id;
             let mut new_account_id = transaction.account_id;
@@ -488,29 +358,19 @@ pub async fn rules_apply(
             }
 
             if needs_update {
-                sqlx::query(
-                    "UPDATE transactions SET category_id = ?, account_id = ? WHERE id = ?",
-                )
-                .bind(new_category_id)
-                .bind(new_account_id)
-                .bind(transaction.id)
-                .execute(&state.pool)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Database error: {}", e);
-                    (
-                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                        "Database error",
-                    )
-                        .into_response()
-                })?;
+                sqlx::query("UPDATE transactions SET category_id = ?, account_id = ? WHERE id = ?")
+                    .bind(new_category_id)
+                    .bind(new_account_id)
+                    .bind(transaction.id)
+                    .execute(&state.pool)
+                    .await
+                    .map_err(|err| super::db_error(err, "Unable to update transactions"))?;
 
                 updated_count += 1;
             }
         }
     }
 
-    tracing::info!("Applied rule {} to {} transactions", rule_id, updated_count);
-    Ok(Redirect::to("/rules").into_response())
+    log::info!(rule_id, updated_count; "");
+    Ok(axum::response::Redirect::to("/rules").into_response())
 }
-

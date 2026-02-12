@@ -1,34 +1,58 @@
-pub mod csv;
-pub mod rules;
-pub mod index;
-pub mod dashboard;
-pub mod transactions;
-pub mod categories;
+use askama::Template;
+use axum::response::IntoResponse;
+
 pub mod accounts;
-pub mod login;
-pub mod logout;
+pub mod auth;
 pub mod callback;
-pub mod add_transaction;
+pub mod categories;
+pub mod csv;
+pub mod dashboard;
+pub mod rules;
 pub mod settings;
+pub mod transactions;
 
-use serde::{Deserialize, Serialize};
+#[derive(Template)]
+#[template(path = "error.html")]
+struct ErrorTemplate {
+    friendly: String,
+}
 
-#[derive(Debug, Default, Deserialize, Clone, Serialize)]
-pub struct TransactionFilters {
-    #[serde(default)]
-    pub account_id: i64,
-    #[serde(default)]
-    pub account: String,
-    #[serde(default)]
-    pub category_id: i64,
-    #[serde(default)]
-    pub filtered: bool,
-    #[serde(default)]
-    pub month: String,
-    #[serde(default)]
-    pub page: i64,
-    #[serde(default)]
-    pub search: String,
-    #[serde(default)]
-    pub transaction_type: String,
+fn db_error(err: sqlx::Error, friendly: &str) -> axum::response::Response {
+    render_error(&err.to_string(), friendly)
+}
+
+fn render_error(err: &str, friendly: &str) -> axum::response::Response {
+    let friendly = match friendly.is_empty() {
+        true => err,
+        false => friendly,
+    };
+
+    log::error!(category="render", friendly, error=err; "");
+
+    let template = ErrorTemplate {
+        friendly: friendly.to_owned(),
+    };
+
+    match template.render().map(axum::response::Html) {
+        Ok(html) => html.into_response(),
+        Err(err) => {
+            log::error!(category="template", error=err.to_string(); "");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Unable to render error template".to_owned(),
+            )
+                .into_response()
+        }
+    }
+}
+
+fn session_error(err: Option<tower_sessions::session::Error>) -> axum::response::Response {
+    match err {
+        Some(err) => render_error(&err.to_string(), "Request does not match active session"),
+        None => render_error("No active session", "No active session"),
+    }
+}
+
+fn template_error(err: askama::Error) -> axum::response::Response {
+    render_error(&err.to_string(), "Unable to render template")
 }

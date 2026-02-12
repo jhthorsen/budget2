@@ -1,0 +1,94 @@
+{% extends "layouts/base.html" %}
+{% block title %}Import Results - Budget App{% endblock %}
+
+{% block content %}
+<article>
+  <header>
+    <h1>Import Results</h1>
+    <header>
+      {% if result.failed == 0 %}
+        <strong style="color: green;">✓ Import Completed Successfully</strong>
+      {% else %}
+        <strong style="color: orange;">⚠ Import Completed with Errors</strong>
+      {% endif %}
+  </header>
+
+  <section>
+    <div class="grid">
+      <div>
+        <h6>Total Rows</h6>
+        <p style="font-size: 1.5em;">{{ result.total_rows }}</p>
+      </div>
+      <div>
+        <h6>Successfully Imported</h6>
+        <p style="color: green; font-size: 1.5em;">{{ result.successful }}</p>
+      </div>
+      <div>
+        <h6>Skipped (Duplicates)</h6>
+        <p style="{% if result.skipped > 0 %}color: orange;{% endif %} font-size: 1.5em;">{{ result.skipped }}</p>
+      </div>
+      <div>
+        <h6>Failed</h6>
+        <p style="{% if result.failed > 0 %}color: red;{% endif %} font-size: 1.5em;">{{ result.failed }}</p>
+      </div>
+    </div>
+  </section>
+
+  {% if !result.categories_created.is_empty() %}
+    <section>
+      <h2>✨ Categories Automaticallyh2>
+      <p>The following categories were created during import:</p>
+      <ul>
+        {% for category in result.categories_created %}
+        <li>{{ category }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if !result.accounts_created.is_empty() %}
+    <section>
+      <h2>🏦 Accounts Automaticallyh2>
+      <p>The following accounts were created during import:</p>
+      <ul>
+        {% for account in result.accounts_created %}
+        <li>{{ account }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if !result.errors.is_empty() %}
+    <section>
+      <h2>Import Errors</h2>
+      <p>The following rows could not be imported:</p>
+
+      <figure>
+        <table>
+          <thead>
+            <tr>
+              <th>Row #</th>
+              <th>Error</th>
+              <th>Row Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for error in result.errors %}
+            <tr>
+              <td>{{ error.row_number }}</td>
+              <td style="color: red;">{{ error.error }}</td>
+              <td><small>{{ error.row_data }}</small></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </figure>
+    </section>
+  {% endif %}
+
+  <footer class="grid">
+    <a href="/dashboard" role="button">Back to Dashboard</a>
+    <a href="/import" role="button" class="secondary">Import Another File</a>
+  </footer>
+</article>
+{% endblock %}

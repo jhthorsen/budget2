@@ -1,40 +1,21 @@
-use axum::{
-    extract::State,
-    response::{IntoResponse, Redirect, Response},
-    Form,
-};
-use tower_sessions::Session;
-
-use crate::{
-    auth::{get_current_user, AppState},
-    models::NewCategory,
-};
+use crate::{models::*, AppState};
+use axum::response::IntoResponse;
+use axum::{extract::State, Form};
 
 pub async fn create_category_handler(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     Form(new_category): Form<NewCategory>,
-) -> Result<Redirect, Response> {
-    let user = get_current_user(&session, &state.pool)
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
+
+    sqlx::query("INSERT INTO categories (user_id, name, color) VALUES (?, ?, ?)")
+        .bind(user.id)
+        .bind(&new_category.name)
+        .bind(&new_category.color)
+        .execute(&state.pool)
         .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+        .map_err(|err| super::db_error(err, "Unable to create category"))?;
 
-    sqlx::query(
-        "INSERT INTO categories (user_id, name, color) VALUES (?, ?, ?)",
-    )
-    .bind(user.id)
-    .bind(&new_category.name)
-    .bind(&new_category.color)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
-
-    Ok(Redirect::to("/dashboard"))
+    Ok(axum::response::Redirect::to("/settings").into_response())
 }

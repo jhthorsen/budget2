@@ -1,64 +1,61 @@
 {% extends "layouts/base.html" %}
-
 {% block title %}{% if rule.is_some() %}Edit{% else %}Create{% endif %} Import Rule - Budget App{% endblock %}
-
 {% block content %}
-<section>
+<article>
+  <header>
     <h1>{% if rule.is_some() %}Edit{% else %}Create{% endif %} Import Rule</h1>
+  </header>
 
-            <article>
-                <header><strong>Rule Configuration</strong></header>
-                
-                <form method="post" action="{% if rule.is_some() %}/rules/{{ rule.as_ref().unwrap().id }}/edit{% else %}/rules/new{% endif %}">
-                    <label>
-                        Pattern (text to match in description) <span style="color: red;">*</span>
-                        <input type="text" name="pattern" value="{% if rule.is_some() %}{{ rule.as_ref().unwrap().pattern }}{% endif %}" required placeholder="e.g., Amazon, Starbucks, Grocery">
-                        <small>Case-insensitive substring match. Example: "starbucks" will match "STARBUCKS COFFEE" or "Starbucks Store #123"</small>
-                    </label>
+  <h2>Rule Configuration</h2>
+  <form method="post" action="{% if rule.is_some() %}/rules/{{ rule.as_ref().unwrap().id }}/edit{% else %}/rules/new{% endif %}">
+    <label>
+      Pattern (text to match in description) <span style="color: red;">*</span>
+      <input type="text" name="pattern" value="{% if rule.is_some() %}{{ rule.as_ref().unwrap().pattern }}{% endif %}" required placeholder="e.g., Amazon, Starbucks, Grocery">
+      <small>Case-insensitive substring match. Example: "starbucks" will match "STARBUCKS COFFEE" or "Starbucks Store #123"</small>
+    </label>
 
-                    <div class="grid">
-                        <label>
-                            Category (optional)
-                            <select name="category_id">
-                                <option value="">-- None --</option>
-                                {% for category in categories %}
-                                <option value="{{ category.id }}"
-                                    {% if rule.is_some() && rule.as_ref().unwrap().category_id.is_some() %}
-                                        {% if rule.as_ref().unwrap().category_id.unwrap() == category.id %}selected{% endif %}
-                                    {% endif %}>
-                                    {{ category.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </label>
+    <div class="grid">
+      <label>
+        Category (optional)
+        <select name="category_id">
+          <option value="">-- None --</option>
+          {% for category in categories %}
+          <option value="{{ category.id }}"
+            {% if rule.is_some() && rule.as_ref().unwrap().category_id.is_some() %}
+              {% if rule.as_ref().unwrap().category_id.unwrap() == category.id %}selected{% endif %}
+            {% endif %}>
+            {{ category.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
 
-                        <label>
-                            Account (optional)
-                            <select name="account_id">
-                                <option value="">-- None --</option>
-                                {% for account in accounts %}
-                                <option value="{{ account.id }}"
-                                    {% if rule.is_some() && rule.as_ref().unwrap().account_id.is_some() %}
-                                        {% if rule.as_ref().unwrap().account_id.unwrap() == account.id %}selected{% endif %}
-                                    {% endif %}>
-                                    {{ account.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                    </div>
+      <label>
+        Account (optional)
+        <select name="account_id">
+          <option value="">-- None --</option>
+          {% for account in accounts %}
+          <option value="{{ account.id }}"
+            {% if rule.is_some() && rule.as_ref().unwrap().account_id.is_some() %}
+              {% if rule.as_ref().unwrap().account_id.unwrap() == account.id %}selected{% endif %}
+            {% endif %}>
+            {{ account.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
 
-                    <label>
-                        Priority
-                        <input type="number" name="priority" value="{% if rule.is_some() %}{{ rule.as_ref().unwrap().priority }}{% else %}999{% endif %}" min="1" max="9999">
-                        <small>Lower numbers are checked first. Use this to control which rule applies when multiple patterns match.</small>
-                    </label>
+    <label>
+      Priority
+      <input type="number" name="priority" value="{% if rule.is_some() %}{{ rule.as_ref().unwrap().priority }}{% else %}999{% endif %}" min="1" max="9999">
+      <small>Lower numbers are checked first. Use this to control which rule applies when multiple patterns match.</small>
+    </label>
 
-                    <div class="grid">
-                        <button type="submit">{% if rule.is_some() %}Update Rule{% else %}Create Rule{% endif %}</button>
-                        <a href="/rules" role="button" class="secondary">Cancel</a>
-                    </div>
-                </form>
-            </article>
-</section>
+    <div class="grid">
+      <button type="submit">{% if rule.is_some() %}Update Rule{% else %}Create Rule{% endif %}</button>
+      <a href="/rules" role="button" class="secondary">Cancel</a>
+    </div>
+  </form>
+</article>
 {% endblock %}

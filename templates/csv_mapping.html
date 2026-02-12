@@ -2,127 +2,124 @@
 
 {% block title %}Map CSV Columns - Budget App{% endblock %}
 
-{% block extra_head %}
-<script>
-    function validateForm(event) {
-        const typeFixed = document.getElementById('type_fixed_value').value;
-        
-        if (!typeFixed) {
-            event.preventDefault();
-            alert('Please select a Transaction Type');
-            return false;
-        }
-        
-        return true;
-    }
-</script>
-{% endblock %}
-
 {% block content %}
-<section>
-            <h1>Map CSV Columns</h1>
-            
-            <article>
-                <header><strong>Column Mapping</strong></header>
-                <p>Map the CSV columns to the transaction fields. Select which column in your CSV corresponds to each field.</p>
-                
-                <form action="/import/process" method="post" onsubmit="return validateForm(event)">
-                    <input type="hidden" name="file_id" value="{{ file_id }}">
-                    
-                    <label>
-                        Date Column <span style="color: red;">*</span>
-                        <select name="date_column" required>
-                            <option value="">-- Select Column --</option>
-                            {% for header in headers %}
-                            <option value="{{ header }}">{{ header }}</option>
-                            {% endfor %}
-                        </select>
-                        <small>Format: YYYY-MM-DD or YYYY/MM/DD</small>
-                    </label>
+<article>
+  <header>
+    <h1>Map CSV Columns</h1>
+  </header>
 
-                    <label>
-                        Amount Column <span style="color: red;">*</span>
-                        <select name="amount_column" required>
-                            <option value="">-- Select Column --</option>
-                            {% for header in headers %}
-                            <option value="{{ header }}">{{ header }}</option>
-                            {% endfor %}
-                        </select>
-                        <small>Numeric value ($ and commas will be removed)</small>
-                    </label>
+  <p>Map the CSV columns to the transaction fields. Select which column in your CSV corresponds to each field.</p>
 
-                    <label>
-                        Amount Multiplier (optional)
-                        <input type="number" name="amount_multiplier" step="0.01" value="1" placeholder="1.0">
-                        <small>Multiply all amounts by this value (e.g., use -1 to invert signs, 0.01 for cents to dollars)</small>
-                    </label>
+  <form action="/import/process" method="post" onsubmit="return validateForm(event)">
+    <input type="hidden" name="file_id" value="{{ file_id }}">
 
-                    <label>
-                        Description Column <span style="color: red;">*</span>
-                        <select name="description_column" required>
-                            <option value="">-- Select Column --</option>
-                            {% for header in headers %}
-                            <option value="{{ header }}">{{ header }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
+    <label>
+      Date Column <span style="color: red;">*</span>
+      <select name="date_column" required>
+        <option value="">-- Select Column --</option>
+        {% for header in headers %}
+        <option value="{{ header }}">{{ header }}</option>
+        {% endfor %}
+      </select>
+      <small>Format: YYYY-MM-DD or YYYY/MM/DD</small>
+    </label>
 
-                    <label>
-                        Transaction Type <span style="color: red;">*</span>
-                        <select name="type_fixed_value" id="type_fixed_value" required>
-                            <option value="">-- Select Type --</option>
-                            <option value="income">Income</option>
-                            <option value="expense">Expense</option>
-                        </select>
-                        <small>Negative amounts will be treated as the opposite type (e.g., if Income is selected, negative amounts become Expenses)</small>
-                    </label>
+    <label>
+      Amount Column <span style="color: red;">*</span>
+      <select name="amount_column" required>
+        <option value="">-- Select Column --</option>
+        {% for header in headers %}
+        <option value="{{ header }}">{{ header }}</option>
+        {% endfor %}
+      </select>
+      <small>Numeric value ($ and commas will be removed)</small>
+    </label>
 
-                    <fieldset>
-                        <legend>Account (optional)</legend>
-                        <label>
-                            Account Column (from CSV)
-                            <select name="account_column" id="account_column">
-                                <option value="">-- None (use fixed value below) --</option>
-                                {% for header in headers %}
-                                <option value="{{ header }}">{{ header }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>
-                            OR Fixed Account Value
-                            <input type="text" name="account_fixed_value" id="account_fixed_value" placeholder="e.g., Checking, Savings">
-                            <small>Use this if all transactions are from the same account</small>
-                        </label>
-                    </fieldset>
+    <label>
+      Amount Multiplier (optional)
+      <input type="number" name="amount_multiplier" step="0.01" value="1" placeholder="1.0">
+      <small>Multiply all amounts by this value (e.g., use -1 to invert signs, 0.01 for cents to dollars)</small>
+    </label>
 
-                    <label>
-                        Category Column (optional)
-                        <select name="category_column">
-                            <option value="">-- None --</option>
-                            {% for header in headers %}
-                            <option value="{{ header }}">{{ header }}</option>
-                            {% endfor %}
-                        </select>
-                        <small>Categories will be automatically created if they don't exist</small>
-                    </label>
+    <label>
+      Description Column <span style="color: red;">*</span>
+      <select name="description_column" required>
+        <option value="">-- Select Column --</option>
+        {% for header in headers %}
+        <option value="{{ header }}">{{ header }}</option>
+        {% endfor %}
+      </select>
+    </label>
 
-                    {% if !categories.is_empty() %}
-                    <details>
-                        <summary>Your Existing Categories</summary>
-                        <ul>
-                            {% for category in categories %}
-                            <li>{{ category.name }}</li>
-                            {% endfor %}
-                        </ul>
-                        <small><em>New categories from your CSV will be added to this list</em></small>
-                    </details>
-                    {% endif %}
+    <label>
+      Transaction Type <span style="color: red;">*</span>
+      <select name="type_fixed_value" id="type_fixed_value" required>
+        <option value="">-- Select Type --</option>
+        <option value="income">Income</option>
+        <option value="expense">Expense</option>
+      </select>
+      <small>Negative amounts will be treated as the opposite type (e.g., if Income is selected, negative amounts become Expenses)</small>
+    </label>
 
-                    <div class="grid">
-                        <button type="submit">Import Transactions</button>
-                        <a href="/import" role="button" class="secondary">Cancel</a>
-                    </div>
-                </form>
-            </article>
-</section>
+    <fieldset>
+      <legend>Account (optional)</legend>
+      <label>
+        Account Column (from CSV)
+        <select name="account_column" id="account_column">
+          <option value="">-- None (use fixed value below) --</option>
+          {% for header in headers %}
+          <option value="{{ header }}">{{ header }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        OR Fixed Account Value
+        <input type="text" name="account_fixed_value" id="account_fixed_value" placeholder="e.g., Checking, Savings">
+        <small>Use this if all transactions are from the same account</small>
+      </label>
+    </fieldset>
+
+    <label>
+      Category Column (optional)
+      <select name="category_column">
+        <option value="">-- None --</option>
+        {% for header in headers %}
+        <option value="{{ header }}">{{ header }}</option>
+        {% endfor %}
+      </select>
+      <small>Categories will be automatically created if they don't exist</small>
+    </label>
+
+    {% if !categories.is_empty() %}
+    <details>
+      <summary>Your Existing Categories</summary>
+      <ul>
+        {% for category in categories %}
+        <li>{{ category.name }}</li>
+        {% endfor %}
+      </ul>
+      <small><em>New categories from your CSV will be added to this list</em></small>
+    </details>
+    {% endif %}
+
+    <div class="grid">
+      <button type="submit">Import Transactions</button>
+      <a href="/import" role="button" class="secondary">Cancel</a>
+    </div>
+  </form>
+</article>
+
+<script nonce="{{ ctx.nonce }}">
+  function validateForm(event) {
+    const typeFixed = document.getElementById('type_fixed_value').value
+
+    if (!typeFixed) {
+      event.preventDefault()
+      alert('Please select a Transaction Type')
+      return false
+    }
+
+    return true
+  }
+</script>
 {% endblock %}

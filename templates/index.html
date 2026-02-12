@@ -1,25 +1,17 @@
 {% extends "layouts/base.html" %}
-
 {% block nav_items %}
-    {% match user %}
-        {% when Some with (u) %}
-            <li>{{ u.name }}</li>
-            <li><a href="/logout" role="button">Logout</a></li>
-        {% when None %}
-            <li><a href="/login" role="button">Login with OAuth</a></li>
-    {% endmatch %}
+  <li><a href="/login" role="button">Login with OAuth</a></li>
 {% endblock %}
 
 {% block content %}
-<section>
+<article>
+  <header>
     <h1>Welcome to Budget App</h1>
-    <p>Track your income and expenses with ease.</p>
-    
-    {% match user %}
-        {% when None %}
-            <p>Please login to get started.</p>
-            <a href="/login" role="button" class="contrast">Login with OAuth</a>
-        {% when Some with (u) %}
-    {% endmatch %}
-</section>
+  </header>
+  <p>Track your income and expenses with ease.</p>
+  <p>Please login to get started.</p>
+  <footer>
+    <a href="/login" role="button" class="contrast">Login with OAuth</a>
+  </footer>
+</article>
 {% endblock %}

@@ -8,7 +8,7 @@
   </header>
 
   {% include "dashboard/stats_summary.html" %}
-  
+
   <form method="get" action="/dashboard?filtered=true" id="form_filter">
     <input type="hidden" name="page" value="1">
     <!-- more fields are inside the table -->
@@ -63,8 +63,8 @@
       {% include "dashboard/transactions_table_body.html" %}
     </table>
   </figure>
-</section>
-<script nonce="{{ nonce }}">
+</article>
+<script nonce="{{ ctx.nonce }}">
   function loadTransactions($el) {
     $el.form.page.value = '1';
     $el.form.requestSubmit()

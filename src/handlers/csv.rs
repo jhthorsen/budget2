@@ -1,265 +1,165 @@
+use crate::{models::*, request_context::RequestContext, AppState};
 use askama::Template;
-use axum::{
-    extract::{Multipart, State},
-    response::{Html, IntoResponse, Redirect, Response},
-    Form,
-};
+use axum::extract::{Multipart, State};
+use axum::{response::IntoResponse, Form};
 use csv::ReaderBuilder;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use tower_sessions::Session;
-use uuid::Uuid;
-
-use crate::{
-    auth::{get_current_user, AppState},
-    models::*,
-    request_context::RequestContext,
-};
 
 const CSV_SESSION_KEY: &str = "csv_upload";
 
 #[derive(Template)]
-#[template(path = "csv_upload.html")]
-struct CsvUploadTemplate {
+#[template(path = "csv_imported.html")]
+struct CsvImportedTemplate {
+    ctx: RequestContext,
+    result: ImportResult,
     user: User,
-    csr: bool,
-    nonce: String,
 }
 
 #[derive(Template)]
 #[template(path = "csv_mapping.html")]
 struct CsvMappingTemplate {
-    user: User,
+    categories: Vec<Category>,
+    ctx: RequestContext,
     file_id: String,
     headers: Vec<String>,
-    categories: Vec<Category>,
-    csr: bool,
-    nonce: String,
+    user: User,
 }
 
 #[derive(Template)]
-#[template(path = "csv_result.html")]
-struct CsvResultTemplate {
+#[template(path = "csv_upload.html")]
+struct CsvUploadTemplate {
+    ctx: RequestContext,
     user: User,
-    result: ImportResult,
-    csr: bool,
-    nonce: String,
-}
-
-pub async fn csv_upload_page(
-    State(state): State<AppState>,
-    session: Session,
-    ctx: RequestContext,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
-
-    let template = CsvUploadTemplate { 
-        user,
-        csr: ctx.csr,
-        nonce: ctx.nonce,
-    };
-    template
-        .render()
-        .map(Html)
-        .map(|html| html.into_response())
-        .map_err(|e| {
-            tracing::error!("Template error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Template error",
-            )
-                .into_response()
-        })
-}
-
-pub async fn csv_upload_handler(
-    State(state): State<AppState>,
-    session: Session,
-    ctx: RequestContext,
-    mut multipart: Multipart,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
-
-    let temp_dir = std::env::temp_dir();
-    let file_id = Uuid::new_v4().to_string();
-    let file_path = temp_dir.join(format!("budget_csv_{}.csv", file_id));
-
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        tracing::error!("Multipart error: {}", e);
-        (
-            axum::http::StatusCode::BAD_REQUEST,
-            "Failed to read upload",
-        )
-            .into_response()
-    })? {
-        if field.name() == Some("csv_file") {
-            let data = field.bytes().await.map_err(|e| {
-                tracing::error!("Failed to read file data: {}", e);
-                (
-                    axum::http::StatusCode::BAD_REQUEST,
-                    "Failed to read file data",
-                )
-                    .into_response()
-            })?;
-
-            fs::write(&file_path, &data).map_err(|e| {
-                tracing::error!("Failed to save file: {}", e);
-                (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to save file",
-                )
-                    .into_response()
-            })?;
-
-            let headers = read_csv_headers(&file_path).map_err(|e| {
-                let _ = fs::remove_file(&file_path);
-                tracing::error!("Failed to read CSV headers: {}", e);
-                (
-                    axum::http::StatusCode::BAD_REQUEST,
-                    format!("Failed to read CSV: {}", e),
-                )
-                    .into_response()
-            })?;
-
-            let csv_session = CsvUploadSession {
-                file_id: file_id.clone(),
-                file_path: file_path.to_string_lossy().to_string(),
-                headers: headers.clone(),
-            };
-
-            session
-                .insert(CSV_SESSION_KEY, csv_session)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Session error: {}", e);
-                    (
-                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                        "Session error",
-                    )
-                        .into_response()
-                })?;
-
-            let categories = sqlx::query_as::<_, Category>(
-                "SELECT * FROM categories WHERE user_id = ? ORDER BY name",
-            )
-            .bind(user.id)
-            .fetch_all(&state.pool)
-            .await
-            .map_err(|e| {
-                tracing::error!("Database error: {}", e);
-                (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "Database error",
-                )
-                    .into_response()
-            })?;
-
-            let template = CsvMappingTemplate {
-                user,
-                file_id,
-                headers,
-                categories,
-                csr: ctx.csr,
-                nonce: ctx.nonce,
-            };
-
-            return template
-                .render()
-                .map(Html)
-                .map(|html| html.into_response())
-                .map_err(|e| {
-                    tracing::error!("Template error: {}", e);
-                    (
-                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                        "Template error",
-                    )
-                        .into_response()
-                });
-        }
-    }
-
-    Err((
-        axum::http::StatusCode::BAD_REQUEST,
-        "No file uploaded",
-    )
-        .into_response())
 }
 
 pub async fn csv_import_handler(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     ctx: RequestContext,
     Form(mapping): Form<ColumnMapping>,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
-
-    let csv_session: CsvUploadSession = session
-        .get(CSV_SESSION_KEY)
-        .await
-        .map_err(|e| {
-            tracing::error!("Session error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Session error",
-            )
-                .into_response()
-        })?
-        .ok_or_else(|| {
-            (
-                axum::http::StatusCode::BAD_REQUEST,
-                "No CSV upload session found",
-            )
-                .into_response()
-        })?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
+    let csv_session: CsvUploadSession = match session.get(CSV_SESSION_KEY).await {
+        Ok(Some(s)) => s,
+        Ok(None) => return Err(super::session_error(None)),
+        Err(err) => return Err(super::session_error(Some(err))),
+    };
 
     if csv_session.file_id != mapping.file_id {
-        return Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            "File ID mismatch",
-        )
-            .into_response());
+        return Err(super::render_error("File ID mismatch", ""));
     }
 
     let file_path = PathBuf::from(&csv_session.file_path);
     let result = import_csv_file(&state, &user, &file_path, &mapping).await;
 
     fs::remove_file(&file_path).ok();
-    session.remove::<CsvUploadSession>(CSV_SESSION_KEY).await.ok();
+    session
+        .remove::<CsvUploadSession>(CSV_SESSION_KEY)
+        .await
+        .ok();
 
-    let result = result.map_err(|e| {
-        tracing::error!("Import error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Import error: {}", e),
-        )
-            .into_response()
-    })?;
+    let result = result.map_err(|err| super::render_error(&err, &err))?;
+    let template = CsvImportedTemplate { ctx, result, user };
 
-    let template = CsvResultTemplate { 
-        user, 
-        result,
-        csr: ctx.csr,
-        nonce: ctx.nonce,
-    };
-    template
+    Ok(template
         .render()
-        .map(Html)
-        .map(|html| html.into_response())
-        .map_err(|e| {
-            tracing::error!("Template error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Template error",
-            )
-                .into_response()
-        })
+        .map(axum::response::Html)
+        .map_err(super::template_error)?
+        .into_response())
+}
+
+pub async fn csv_upload_handler(
+    State(state): State<AppState>,
+    session: tower_sessions::Session,
+    ctx: RequestContext,
+    mut multipart: Multipart,
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
+    let temp_dir = std::env::temp_dir();
+
+    while let Some(field) = multipart.next_field().await.map_err(|err| {
+        super::render_error(&err.to_string(), "Something is wrong with the upload")
+    })? {
+        if field.name() != Some("csv_file") {
+            continue;
+        }
+
+        let Some(file_name) = field.file_name() else {
+            return Err(super::render_error("CSV file must have a file name", ""));
+        };
+
+        let file_id = &format!(
+            "budget_upload_{}_{}.csv",
+            user.id,
+            file_name.replace("/", "_").replace(".", "_")
+        );
+
+        let file_path = temp_dir.join(file_id);
+        let data = field
+            .bytes()
+            .await
+            .map_err(|err| super::render_error(&err.to_string(), "Failed to read file data"))?;
+
+        fs::write(&file_path, &data)
+            .map_err(|err| super::render_error(&err.to_string(), "Failed to save file"))?;
+
+        let headers = read_csv_headers(&file_path).map_err(|err| {
+            fs::remove_file(&file_path).ok();
+            super::render_error(&err.to_string(), "Failed to read CSV headers")
+        })?;
+
+        let csv_session = CsvUploadSession {
+            file_id: file_id.clone(),
+            file_path: file_path.to_string_lossy().to_string(),
+            headers: headers.clone(),
+        };
+
+        session
+            .insert(CSV_SESSION_KEY, csv_session)
+            .await
+            .map_err(|err| super::render_error(&err.to_string(), "Failed to insert session"))?;
+
+        let categories = sqlx::query_as::<_, Category>(
+            "SELECT * FROM categories WHERE user_id = ? ORDER BY name",
+        )
+        .bind(user.id)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to load categories"))?;
+
+        let template = CsvMappingTemplate {
+            ctx,
+            user,
+            file_id: file_id.clone(),
+            headers,
+            categories,
+        };
+
+        return Ok(template
+            .render()
+            .map(axum::response::Html)
+            .map_err(super::template_error)?
+            .into_response());
+    }
+
+    Err(super::render_error("No file uploaded", ""))
+}
+
+pub async fn csv_upload_page(
+    State(state): State<AppState>,
+    session: tower_sessions::Session,
+    ctx: RequestContext,
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
+    let template = CsvUploadTemplate { ctx, user };
+
+    Ok(template
+        .render()
+        .map(axum::response::Html)
+        .map_err(super::template_error)?
+        .into_response())
 }
 
 fn read_csv_headers(path: &PathBuf) -> Result<Vec<String>, String> {
@@ -303,7 +203,17 @@ async fn import_csv_file(
 
         match result {
             Ok(record) => {
-                match import_row(state, user, &record, &header_map, mapping, &mut categories_created, &mut accounts_created).await {
+                match import_row(
+                    state,
+                    user,
+                    &record,
+                    &header_map,
+                    mapping,
+                    &mut categories_created,
+                    &mut accounts_created,
+                )
+                .await
+                {
                     Ok(imported) => {
                         if imported {
                             successful += 1;
@@ -376,25 +286,24 @@ async fn import_row(
         .map_err(|_| format!("Invalid amount: {}", amount_str))?;
 
     // Apply multiplier if specified
-    let multiplier = mapping.amount_multiplier
+    let multiplier = mapping
+        .amount_multiplier
         .as_ref()
         .and_then(|m| m.parse::<f64>().ok())
         .unwrap_or(1.0);
-    
-    let amount = original_amount * multiplier;
 
+    let amount = original_amount * multiplier;
     let description = get_field(&mapping.description_column)?;
-    
+
     // Determine transaction type based on amount sign and fixed type value
     let fixed_type = mapping.type_fixed_value.to_lowercase().trim().to_string();
-    
     if fixed_type != "income" && fixed_type != "expense" {
         return Err(format!(
             "Invalid transaction type: {}. Must be 'income' or 'expense'",
             fixed_type
         ));
     }
-    
+
     // Logic: If fixed type is "income", negative amounts are expenses and positive are income
     //        If fixed type is "expense", negative amounts are income and positive are expenses
     let transaction_type = if fixed_type == "income" {
@@ -410,7 +319,8 @@ async fn import_row(
         } else {
             "expense"
         }
-    }.to_string();
+    }
+    .to_string();
 
     // Account: use column value if specified, otherwise use fixed value
     let account_name = if let Some(col) = &mapping.account_column {
@@ -428,39 +338,33 @@ async fn import_row(
         let acc_name = acc_name.trim();
         if !acc_name.is_empty() {
             // Check if account exists
-            let existing = sqlx::query_scalar::<_, i64>(
-                "SELECT id FROM accounts WHERE name = ?",
-            )
-            .bind(acc_name)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(|e| format!("Database error: {}", e))?;
+            let existing = sqlx::query_scalar::<_, i64>("SELECT id FROM accounts WHERE name = ?")
+                .bind(acc_name)
+                .fetch_optional(&state.pool)
+                .await
+                .map_err(|e| format!("Database error: {}", e))?;
 
             let acc_id = if let Some(id) = existing {
                 id
             } else {
                 // Create new account
-                let result = sqlx::query(
-                    "INSERT INTO accounts (name) VALUES (?)",
-                )
-                .bind(acc_name)
-                .execute(&state.pool)
-                .await
-                .map_err(|e| format!("Failed to create account '{}': {}", acc_name, e))?;
+                let result = sqlx::query("INSERT INTO accounts (name) VALUES (?)")
+                    .bind(acc_name)
+                    .execute(&state.pool)
+                    .await
+                    .map_err(|e| format!("Failed to create account '{}': {}", acc_name, e))?;
 
                 accounts_created.insert(acc_name.to_string());
                 result.last_insert_rowid()
             };
 
             // Ensure user has access to this account
-            sqlx::query(
-                "INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)",
-            )
-            .bind(user.id)
-            .bind(acc_id)
-            .execute(&state.pool)
-            .await
-            .map_err(|e| format!("Failed to link account: {}", e))?;
+            sqlx::query("INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)")
+                .bind(user.id)
+                .bind(acc_id)
+                .execute(&state.pool)
+                .await
+                .map_err(|e| format!("Failed to link account: {}", e))?;
 
             Some(acc_id)
         } else {
@@ -489,14 +393,15 @@ async fn import_row(
                         Some(cat_id)
                     } else {
                         // Category doesn't exist, create it
-                        let result = sqlx::query(
-                            "INSERT INTO categories (user_id, name) VALUES (?, ?)",
-                        )
-                        .bind(user.id)
-                        .bind(cat_name)
-                        .execute(&state.pool)
-                        .await
-                        .map_err(|e| format!("Failed to create category '{}': {}", cat_name, e))?;
+                        let result =
+                            sqlx::query("INSERT INTO categories (user_id, name) VALUES (?, ?)")
+                                .bind(user.id)
+                                .bind(cat_name)
+                                .execute(&state.pool)
+                                .await
+                                .map_err(|e| {
+                                    format!("Failed to create category '{}': {}", cat_name, e)
+                                })?;
 
                         categories_created.insert(cat_name.to_string());
                         Some(result.last_insert_rowid())
@@ -529,9 +434,10 @@ async fn import_row(
         .map_err(|e| format!("Database error fetching rules: {}", e))?;
 
         let description_lower = description.to_lowercase();
-        if let Some(matched_rule) = rules.iter().find(|rule| {
-            description_lower.contains(&rule.pattern.to_lowercase())
-        }) {
+        if let Some(matched_rule) = rules
+            .iter()
+            .find(|rule| description_lower.contains(&rule.pattern.to_lowercase()))
+        {
             if category_id.is_none() && matched_rule.category_id.is_some() {
                 final_category_id = matched_rule.category_id;
             }
@@ -584,18 +490,18 @@ async fn import_row(
 
 fn normalize_date(date_str: &str) -> Result<String, String> {
     let date_str = date_str.trim();
-    
+
     if date_str.contains('/') {
         let parts: Vec<&str> = date_str.split('/').collect();
         if parts.len() == 3 {
             return Ok(format!("{}-{:0>2}-{:0>2}", parts[0], parts[1], parts[2]));
         }
     }
-    
+
     if date_str.contains('-') && date_str.len() == 10 {
         return Ok(date_str.to_string());
     }
-    
+
     Err(format!(
         "Invalid date format: '{}'. Expected YYYY-MM-DD or YYYY/MM/DD",
         date_str

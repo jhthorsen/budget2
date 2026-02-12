@@ -1,58 +1,53 @@
+use crate::{filters, models::*, request_context::RequestContext, AppState};
 use askama::Template;
-use axum::{
-    extract::{Query, State},
-    response::{Html, IntoResponse, Redirect, Response},
-};
+use axum::extract::{Query, State};
+use axum::response::IntoResponse;
 use sqlx::SqlitePool;
-use tower_sessions::Session;
-
-use crate::{
-    auth::{get_current_user, AppState},
-    filters,
-    models::*,
-    request_context::RequestContext,
-};
-
-use super::TransactionFilters;
 
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
+    ctx: RequestContext,
     accounts: Vec<AccountWithOwnership>,
     categories: Vec<Category>,
-    csr: bool,
     filtered_summary: BudgetSummary,
     filters: TransactionFilters,
-    nonce: String,
+    more_transactions: bool,
     summary: BudgetSummary,
     transactions: Vec<TransactionWithCategory>,
     user: User,
-    more_transactions: bool,
 }
 
 #[derive(Template)]
 #[template(path = "dashboard/search_results.html")]
 struct DashboardSearchResultsTemplate {
+    ctx: RequestContext,
     filtered_summary: BudgetSummary,
+    filters: TransactionFilters,
+    more_transactions: bool,
     summary: BudgetSummary,
     transactions: Vec<TransactionWithCategory>,
-    more_transactions: bool,
-    filters: TransactionFilters,
-    nonce: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct FilteredSummaryRow {
+    total_income: f64,
+    total_expenses: f64,
+}
+
+#[derive(sqlx::FromRow)]
+struct SummaryRow {
+    total_income: f64,
+    total_expenses: f64,
 }
 
 pub async fn dashboard_handler(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     Query(filters): Query<TransactionFilters>,
     ctx: RequestContext,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool).await;
-
-    let user = match user {
-        Some(u) => u,
-        None => return Ok(Redirect::to("/").into_response()),
-    };
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
     const PER_PAGE: i64 = 100;
     let page = filters.page.max(1);
@@ -128,14 +123,7 @@ pub async fn dashboard_handler(
         .bind(offset)
         .fetch_all(&state.pool)
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error",
-            )
-                .into_response()
-        })?;
+        .map_err(|err| super::db_error(err, "Unable to get list of transactions"))?;
 
     let more_transactions = if transactions.len() as i64 > PER_PAGE {
         transactions.pop();
@@ -149,14 +137,7 @@ pub async fn dashboard_handler(
             .bind(user.id)
             .fetch_all(&state.pool)
             .await
-            .map_err(|e| {
-                tracing::error!("Database error: {}", e);
-                (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "Database error",
-                )
-                    .into_response()
-            })?;
+            .map_err(|err| super::db_error(err, "Unable to get list of categories"))?;
 
     // Get accounts accessible to this user with ownership status
     let accounts = sqlx::query_as::<_, AccountWithOwnership>(
@@ -171,23 +152,11 @@ pub async fn dashboard_handler(
     .bind(user.id)
     .fetch_all(&state.pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    .map_err(|err| super::db_error(err, "Unable to get list of accounts"))?;
 
-    let summary = calculate_summary(&state.pool, user.id).await.map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    let summary = calculate_summary(&state.pool, user.id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to calculate summary"))?;
 
     // Calculate filtered summary
     let filtered_summary_query = format!(
@@ -201,12 +170,6 @@ pub async fn dashboard_handler(
         where_clause
     );
 
-    #[derive(sqlx::FromRow)]
-    struct FilteredSummaryRow {
-        total_income: f64,
-        total_expenses: f64,
-    }
-
     let mut filtered_summary_query_exec =
         sqlx::query_as::<_, FilteredSummaryRow>(&filtered_summary_query);
     for param in &params {
@@ -215,14 +178,7 @@ pub async fn dashboard_handler(
     let filtered_result = filtered_summary_query_exec
         .fetch_one(&state.pool)
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error",
-            )
-                .into_response()
-        })?;
+        .map_err(|err| super::db_error(err, "Unable to calculate filtered summary"))?;
 
     let filtered_summary = BudgetSummary {
         total_income: filtered_result.total_income,
@@ -230,51 +186,43 @@ pub async fn dashboard_handler(
         balance: filtered_result.total_income - filtered_result.total_expenses,
     };
 
-    let html = if !filters.filtered {
-        let dashboard = DashboardTemplate {
-            accounts,
-            categories,
-            csr: ctx.csr,
+    if filters.filtered {
+        let template = DashboardSearchResultsTemplate {
+            ctx,
             filtered_summary,
             filters,
             more_transactions,
-            nonce: ctx.nonce,
+            summary,
+            transactions,
+        };
+
+        Ok(template
+            .render()
+            .map(axum::response::Html)
+            .map_err(super::template_error)?
+            .into_response())
+    } else {
+        let template = DashboardTemplate {
+            ctx,
+            accounts,
+            categories,
+            filtered_summary,
+            filters,
+            more_transactions,
             summary,
             transactions,
             user,
         };
-        dashboard.render()
-    } else {
-        let dashboard = DashboardSearchResultsTemplate {
-            filtered_summary,
-            filters,
-            more_transactions,
-            nonce: ctx.nonce,
-            summary,
-            transactions,
-        };
-        dashboard.render()
-    };
 
-    html.map(Html)
-        .map(|html| html.into_response())
-        .map_err(|e| {
-            tracing::error!("Template error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Template error",
-            )
-                .into_response()
-        })
+        Ok(template
+            .render()
+            .map(axum::response::Html)
+            .map_err(super::template_error)?
+            .into_response())
+    }
 }
 
 async fn calculate_summary(pool: &SqlitePool, user_id: i64) -> Result<BudgetSummary, sqlx::Error> {
-    #[derive(sqlx::FromRow)]
-    struct SummaryRow {
-        total_income: f64,
-        total_expenses: f64,
-    }
-
     let result = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT 

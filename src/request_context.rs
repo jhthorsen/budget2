@@ -1,10 +1,4 @@
-use axum::{
-    async_trait,
-    extract::FromRequestParts,
-    http::{request::Parts, HeaderMap},
-};
 use rand::Rng;
-use serde::Deserialize;
 
 #[derive(Debug, Clone)]
 pub struct RequestContext {
@@ -12,25 +6,16 @@ pub struct RequestContext {
     pub nonce: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct CsrQuery {
-    #[serde(default)]
-    csr: Option<String>,
-}
-
 impl RequestContext {
     fn generate_nonce() -> String {
-        const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        let mut rng = rand::thread_rng();
-        (0..16)
-            .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
-                CHARSET[idx] as char
-            })
+        rand::rng()
+            .sample_iter(&rand::distr::Alphanumeric)
+            .take(16)
+            .map(char::from)
             .collect()
     }
 
-    fn extract_nonce(headers: &HeaderMap) -> String {
+    fn extract_nonce(headers: &axum::http::HeaderMap) -> String {
         headers
             .get("x-nonce")
             .and_then(|v| v.to_str().ok())
@@ -39,14 +24,17 @@ impl RequestContext {
     }
 }
 
-#[async_trait]
-impl<S> FromRequestParts<S> for RequestContext
+#[axum::async_trait]
+impl<S> axum::extract::FromRequestParts<S> for RequestContext
 where
     S: Send + Sync,
 {
     type Rejection = std::convert::Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
         let nonce = Self::extract_nonce(&parts.headers);
         let csr = parts.headers.get("x-nonce").is_some();
 

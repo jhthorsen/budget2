@@ -49,7 +49,7 @@
     </tr>
   {% endif %}
 </tbody>
-<script nonce="{{ nonce }}">
+<script nonce="{{ ctx.nonce }}">
   function filterTransactions($, evt) {
     const $f = $(document, '#form_filter')
     const $a = evt.target.closest('a')
@@ -70,7 +70,7 @@
     $f.requestSubmit()
   }
 </script>
-<style nonce="{{ nonce }}">
+<style nonce="{{ ctx.nonce }}">
 .transaction-row td {
   transition: background-color 0.15s;
   border-bottom: 0;

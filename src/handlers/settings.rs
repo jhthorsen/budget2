@@ -1,47 +1,30 @@
+use crate::{models::*, request_context::RequestContext, AppState};
 use askama::Template;
-use axum::{
-    extract::State,
-    response::{Html, IntoResponse, Redirect, Response},
-};
-use tower_sessions::Session;
-
-use crate::{
-    auth::{get_current_user, AppState},
-    models::*,
-    request_context::RequestContext,
-};
+use axum::extract::State;
+use axum::response::IntoResponse;
 
 #[derive(Template)]
 #[template(path = "settings.html")]
 struct SettingsTemplate {
-    user: User,
-    categories: Vec<Category>,
     accounts: Vec<AccountWithOwnership>,
-    csr: bool,
-    nonce: String,
+    categories: Vec<Category>,
+    ctx: RequestContext,
+    user: User,
 }
 
 pub async fn settings_page(
     State(state): State<AppState>,
-    session: Session,
+    session: tower_sessions::Session,
     ctx: RequestContext,
-) -> Result<Response, Response> {
-    let user = get_current_user(&session, &state.pool)
-        .await
-        .ok_or_else(|| Redirect::to("/").into_response())?;
+) -> crate::HttpResult {
+    let user = auth::get_current_user(&session, &state.pool).await?;
 
-    let categories = sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
-        .bind(user.id)
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error",
-            )
-                .into_response()
-        })?;
+    let categories =
+        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
+            .bind(user.id)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|err| super::db_error(err, "Unable to get list of categories"))?;
 
     let accounts = sqlx::query_as::<_, AccountWithOwnership>(
         r#"
@@ -50,38 +33,23 @@ pub async fn settings_page(
         INNER JOIN user_accounts ua ON a.id = ua.account_id
         WHERE ua.user_id = ?
         ORDER BY a.name
-        "#
+        "#,
     )
     .bind(user.id)
     .fetch_all(&state.pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Database error",
-        )
-            .into_response()
-    })?;
+    .map_err(|err| super::db_error(err, "Unable to get list of accounts"))?;
 
     let template = SettingsTemplate {
-        user,
-        categories,
         accounts,
-        csr: ctx.csr,
-        nonce: ctx.nonce,
+        categories,
+        ctx,
+        user,
     };
 
-    template
+    Ok(template
         .render()
-        .map(Html)
-        .map(|html| html.into_response())
-        .map_err(|e| {
-            tracing::error!("Template error: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Template error",
-            )
-                .into_response()
-        })
+        .map(axum::response::Html)
+        .map_err(super::template_error)?
+        .into_response())
 }
