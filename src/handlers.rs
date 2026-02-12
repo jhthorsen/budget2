@@ -28,7 +28,7 @@ fn render_error(err: &str, friendly: &str) -> axum::response::Response {
         false => friendly,
     };
 
-    log::error!(category="render", friendly, error=err; "");
+    tracing::error!(category="render", friendly, error=err);
 
     let template = ErrorTemplate {
         friendly: friendly.to_owned(),
@@ -37,7 +37,7 @@ fn render_error(err: &str, friendly: &str) -> axum::response::Response {
     match template.render().map(axum::response::Html) {
         Ok(html) => html.into_response(),
         Err(err) => {
-            log::error!(category="template", error=err.to_string(); "");
+            tracing::error!(category="template", error=err.to_string());
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unable to render error template".to_owned(),

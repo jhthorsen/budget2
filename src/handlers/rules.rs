@@ -371,6 +371,6 @@ pub async fn rules_apply(
         }
     }
 
-    log::info!(rule_id, updated_count; "");
+    tracing::info!(rule_id, updated_count);
     Ok(axum::response::Redirect::to("/rules").into_response())
 }

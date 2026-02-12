@@ -5,6 +5,7 @@ mod request_context;
 
 use axum::routing::{get, post};
 use tower_sessions_sqlx_store::SqliteStore;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 type HttpResult = Result<axum::response::Response, axum::response::Response>;
 
@@ -18,7 +19,14 @@ pub struct AppState {
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().ok();
-    env_logger::Builder::from_env(env_logger::Env::default()).init();
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "budget_app=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:budget.db".to_string());
@@ -102,6 +110,7 @@ async fn main() {
             post(handlers::transactions::create_transaction_handler),
         )
         .layer(session_layer)
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
 
     let port = std::env::var("PORT")
@@ -113,7 +122,7 @@ async fn main() {
         .await
         .expect("To listen to port");
 
-    log::info!(port; "http://{}", listener.local_addr().unwrap());
+    tracing::info!(port, "http://{}", listener.local_addr().unwrap());
 
     axum::serve(listener, app)
         .await
