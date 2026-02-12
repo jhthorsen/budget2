@@ -19,13 +19,6 @@ pub struct AccountWithOwnership {
     pub is_mine: bool,
 }
 
-#[derive(Debug, Serialize)]
-pub struct BudgetSummary {
-    pub total_income: f64,
-    pub total_expenses: f64,
-    pub balance: f64,
-}
-
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Category {
     pub id: i64,

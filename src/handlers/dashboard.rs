@@ -11,10 +11,8 @@ struct DashboardTemplate {
     accounts: Vec<AccountWithOwnership>,
     categories: Vec<Category>,
     chart_data: ChartData,
-    filtered_summary: BudgetSummary,
     filters: TransactionFilters,
     more_transactions: bool,
-    summary: BudgetSummary,
     transactions: Vec<TransactionWithCategory>,
     user: User,
 }
@@ -24,23 +22,9 @@ struct DashboardTemplate {
 struct DashboardSearchResultsTemplate {
     ctx: RequestContext,
     chart_data: ChartData,
-    filtered_summary: BudgetSummary,
     filters: TransactionFilters,
     more_transactions: bool,
-    summary: BudgetSummary,
     transactions: Vec<TransactionWithCategory>,
-}
-
-#[derive(sqlx::FromRow)]
-struct FilteredSummaryRow {
-    total_income: f64,
-    total_expenses: f64,
-}
-
-#[derive(sqlx::FromRow)]
-struct SummaryRow {
-    total_income: f64,
-    total_expenses: f64,
 }
 
 pub async fn dashboard_handler(
@@ -156,52 +140,24 @@ pub async fn dashboard_handler(
     .await
     .map_err(|err| super::db_error(err, "Unable to get list of accounts"))?;
 
-    let summary = calculate_summary(&state.pool, user.id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to calculate summary"))?;
-
-    // Calculate filtered summary
-    let filtered_summary_query = format!(
-        r#"
-        SELECT
-            CAST(COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_income,
-            CAST(COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_expenses
-        FROM transactions t
-        WHERE {}
-        "#,
-        where_clause
-    );
-
-    let mut filtered_summary_query_exec =
-        sqlx::query_as::<_, FilteredSummaryRow>(&filtered_summary_query);
-    for param in &params {
-        filtered_summary_query_exec = filtered_summary_query_exec.bind(param);
-    }
-    let filtered_result = filtered_summary_query_exec
-        .fetch_one(&state.pool)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to calculate filtered summary"))?;
-
-    let filtered_summary = BudgetSummary {
-        total_income: filtered_result.total_income,
-        total_expenses: filtered_result.total_expenses,
-        balance: filtered_result.total_income - filtered_result.total_expenses,
-    };
-
     // Fetch chart data - group by account if single category selected, otherwise by category
     let group_by_account = filters.category_id > 0;
-    let chart_data = fetch_chart_data(&state.pool, &where_clause, &params, &filters.month, group_by_account)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch chart data"))?;
+    let chart_data = fetch_chart_data(
+        &state.pool,
+        &where_clause,
+        &params,
+        &filters.month,
+        group_by_account,
+    )
+    .await
+    .map_err(|err| super::db_error(err, "Unable to fetch chart data"))?;
 
     if filters.filtered {
         let template = DashboardSearchResultsTemplate {
             ctx,
             chart_data,
-            filtered_summary,
             filters,
             more_transactions,
-            summary,
             transactions,
         };
 
@@ -216,10 +172,8 @@ pub async fn dashboard_handler(
             accounts,
             categories,
             chart_data,
-            filtered_summary,
             filters,
             more_transactions,
-            summary,
             transactions,
             user,
         };
@@ -230,30 +184,6 @@ pub async fn dashboard_handler(
             .map_err(super::template_error)?
             .into_response())
     }
-}
-
-async fn calculate_summary(pool: &SqlitePool, user_id: i64) -> Result<BudgetSummary, sqlx::Error> {
-    let result = sqlx::query_as::<_, SummaryRow>(
-        r#"
-        SELECT
-            CAST(COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_income,
-            CAST(COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0.0) AS REAL) as total_expenses
-        FROM transactions t
-        LEFT JOIN user_accounts ua ON t.account_id = ua.account_id AND ua.user_id = ?
-        WHERE t.user_id = ?
-          AND (t.account_id IS NULL OR ua.is_mine = 1)
-        "#,
-    )
-    .bind(user_id)
-    .bind(user_id)
-    .fetch_one(pool)
-    .await?;
-
-    Ok(BudgetSummary {
-        total_income: result.total_income,
-        total_expenses: result.total_expenses,
-        balance: result.total_income - result.total_expenses,
-    })
 }
 
 async fn fetch_chart_data(
@@ -269,17 +199,17 @@ async fn fetch_chart_data(
     // Using OKLCH color space for perceptually uniform colors
     fn get_professional_palette() -> Vec<&'static str> {
         vec![
-            "oklch(65% 0.20 250)",  // Blue
-            "oklch(70% 0.19 145)",  // Green
-            "oklch(75% 0.20 50)",   // Orange
-            "oklch(68% 0.20 320)",  // Purple
-            "oklch(72% 0.18 180)",  // Cyan
-            "oklch(70% 0.20 25)",   // Red-Orange
-            "oklch(65% 0.15 280)",  // Indigo
-            "oklch(73% 0.17 85)",   // Yellow-Green
-            "oklch(68% 0.18 350)",  // Magenta
-            "oklch(70% 0.16 200)",  // Sky Blue
-            "oklch(60% 0.10 270)",  // Other (muted purple-gray)
+            "oklch(65% 0.20 250)", // Blue
+            "oklch(70% 0.19 145)", // Green
+            "oklch(75% 0.20 50)",  // Orange
+            "oklch(68% 0.20 320)", // Purple
+            "oklch(72% 0.18 180)", // Cyan
+            "oklch(70% 0.20 25)",  // Red-Orange
+            "oklch(65% 0.15 280)", // Indigo
+            "oklch(73% 0.17 85)",  // Yellow-Green
+            "oklch(68% 0.18 350)", // Magenta
+            "oklch(70% 0.16 200)", // Sky Blue
+            "oklch(60% 0.10 270)", // Other (muted purple-gray)
         ]
     }
 
@@ -360,20 +290,16 @@ async fn fetch_chart_data(
         let parts: Vec<&str> = month.split('-').collect();
         if parts.len() == 2 {
             if let (Ok(year), Ok(month_num)) = (parts[0].parse::<i32>(), parts[1].parse::<u32>()) {
-                chrono::NaiveDate::from_ymd_opt(
-                    year,
-                    month_num,
-                    1,
-                )
-                .and_then(|d| {
-                    if month_num == 12 {
-                        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
-                    } else {
-                        chrono::NaiveDate::from_ymd_opt(year, month_num + 1, 1)
-                    }
-                    .map(|next| (next - d).num_days() as i64)
-                })
-                .unwrap_or(31)
+                chrono::NaiveDate::from_ymd_opt(year, month_num, 1)
+                    .and_then(|d| {
+                        if month_num == 12 {
+                            chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+                        } else {
+                            chrono::NaiveDate::from_ymd_opt(year, month_num + 1, 1)
+                        }
+                        .map(|next| (next - d).num_days() as i64)
+                    })
+                    .unwrap_or(31)
             } else {
                 31
             }
@@ -390,7 +316,14 @@ async fn fetch_chart_data(
         if row.transaction_type == "expense" {
             let key = (
                 row.group_id,
-                row.group_name.clone().unwrap_or_else(|| if group_by_account { "No Account" } else { "Uncategorized" }.to_string()),
+                row.group_name.clone().unwrap_or_else(|| {
+                    if group_by_account {
+                        "No Account"
+                    } else {
+                        "Uncategorized"
+                    }
+                    .to_string()
+                }),
                 row.group_color.clone(),
             );
             *group_totals.entry(key).or_insert(0.0) += row.total;
@@ -418,7 +351,10 @@ async fn fetch_chart_data(
         .collect();
     all_categories.sort_by(|a, b| a.0.cmp(&b.0));
     if group_vec.len() > 10 {
-        all_categories.push(("Other".to_string(), get_professional_palette()[10].to_string()));
+        all_categories.push((
+            "Other".to_string(),
+            get_professional_palette()[10].to_string(),
+        ));
     }
 
     // Process raw data into day stacks
@@ -431,17 +367,27 @@ async fn fetch_chart_data(
         let mut expense_map: HashMap<String, CategoryStack> = HashMap::new();
 
         for row in raw_data.iter().filter(|r| r.day == day_num) {
-            let category_key = (row.group_id, row.group_name.clone().unwrap_or_else(|| "Uncategorized".to_string()));
+            let category_key = (
+                row.group_id,
+                row.group_name
+                    .clone()
+                    .unwrap_or_else(|| "Uncategorized".to_string()),
+            );
 
             let (name, color) = if row.transaction_type == "expense" {
                 if let Some(color) = top_groups.get(&category_key) {
                     (category_key.1.clone(), color.clone())
                 } else {
-                    ("Other".to_string(), get_professional_palette()[10].to_string())
+                    (
+                        "Other".to_string(),
+                        get_professional_palette()[10].to_string(),
+                    )
                 }
             } else {
                 (
-                    row.group_name.clone().unwrap_or_else(|| "Uncategorized".to_string()),
+                    row.group_name
+                        .clone()
+                        .unwrap_or_else(|| "Uncategorized".to_string()),
                     assign_color(row.group_color.clone(), 0, true),
                 )
             };
@@ -451,22 +397,36 @@ async fn fetch_chart_data(
                 category_name: name.clone(),
                 category_color: color.clone(),
                 amount: row.total,
-                y_pos: 0, // Will be calculated later
+                y_pos: 0,  // Will be calculated later
                 height: 0, // Will be calculated later
             };
 
             if row.transaction_type == "income" {
-                income_map.entry(name).and_modify(|s| s.amount += row.total).or_insert(stack);
+                income_map
+                    .entry(name)
+                    .and_modify(|s| s.amount += row.total)
+                    .or_insert(stack);
             } else {
-                expense_map.entry(name).and_modify(|s| s.amount += row.total).or_insert(stack);
+                expense_map
+                    .entry(name)
+                    .and_modify(|s| s.amount += row.total)
+                    .or_insert(stack);
             }
         }
 
         let mut income_stacks: Vec<_> = income_map.into_values().collect();
         let mut expense_stacks: Vec<_> = expense_map.into_values().collect();
 
-        income_stacks.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap_or(std::cmp::Ordering::Equal));
-        expense_stacks.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap_or(std::cmp::Ordering::Equal));
+        income_stacks.sort_by(|a, b| {
+            b.amount
+                .partial_cmp(&a.amount)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        expense_stacks.sort_by(|a, b| {
+            b.amount
+                .partial_cmp(&a.amount)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let total_income: f64 = income_stacks.iter().map(|s| s.amount).sum();
         let total_expenses: f64 = expense_stacks.iter().map(|s| s.amount).sum();
@@ -521,13 +481,15 @@ async fn fetch_chart_data(
 
     for day in &days {
         for stack in &day.income_stacks {
-            let entry = income_totals.entry(stack.category_name.clone())
+            let entry = income_totals
+                .entry(stack.category_name.clone())
                 .or_insert((0.0, stack.category_color.clone()));
             entry.0 += stack.amount;
             total_income += stack.amount;
         }
         for stack in &day.expense_stacks {
-            let entry = expense_totals.entry(stack.category_name.clone())
+            let entry = expense_totals
+                .entry(stack.category_name.clone())
                 .or_insert((0.0, stack.category_color.clone()));
             entry.0 += stack.amount;
             total_expenses += stack.amount;
@@ -539,13 +501,13 @@ async fn fetch_chart_data(
     let mut current_angle = -90.0;
     const CENTER: i32 = 150;
     const RADIUS: i32 = 100;
-    
+
     for (name, (amount, color)) in income_totals.iter() {
         if total_income > 0.0 {
             let percentage = amount / total_income;
             let angle = percentage * 360.0;
             let end_angle = current_angle + angle;
-            
+
             let start_rad = current_angle * std::f64::consts::PI / 180.0;
             let end_rad = end_angle * std::f64::consts::PI / 180.0;
             let start_x = CENTER + (RADIUS as f64 * start_rad.cos()) as i32;
@@ -553,7 +515,7 @@ async fn fetch_chart_data(
             let end_x = CENTER + (RADIUS as f64 * end_rad.cos()) as i32;
             let end_y = CENTER + (RADIUS as f64 * end_rad.sin()) as i32;
             let large_arc = if angle > 180.0 { 1 } else { 0 };
-            
+
             income_pie_slices.push(PieSlice {
                 name: name.clone(),
                 color: color.clone(),
@@ -565,7 +527,7 @@ async fn fetch_chart_data(
                 end_y,
                 large_arc,
             });
-            
+
             current_angle = end_angle;
         }
     }
@@ -578,7 +540,7 @@ async fn fetch_chart_data(
             let percentage = amount / total_expenses;
             let angle = percentage * 360.0;
             let end_angle = current_angle + angle;
-            
+
             let start_rad = current_angle * std::f64::consts::PI / 180.0;
             let end_rad = end_angle * std::f64::consts::PI / 180.0;
             let start_x = CENTER + (RADIUS as f64 * start_rad.cos()) as i32;
@@ -586,7 +548,7 @@ async fn fetch_chart_data(
             let end_x = CENTER + (RADIUS as f64 * end_rad.cos()) as i32;
             let end_y = CENTER + (RADIUS as f64 * end_rad.sin()) as i32;
             let large_arc = if angle > 180.0 { 1 } else { 0 };
-            
+
             expense_pie_slices.push(PieSlice {
                 name: name.clone(),
                 color: color.clone(),
@@ -598,7 +560,7 @@ async fn fetch_chart_data(
                 end_y,
                 large_arc,
             });
-            
+
             current_angle = end_angle;
         }
     }

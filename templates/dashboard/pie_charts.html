@@ -13,8 +13,6 @@
 
   {% if !chart_data.days.is_empty() %}
   <div id="pie_chart_container" style="position: relative;">
-    <h3 style="text-align: center; margin-bottom: 1rem; font-size: 1.125rem;">Distribution by {% if filters.category_id > 0 %}Account{% else %}Category{% endif %}</h3>
-    
     <!-- Tooltip for pie charts -->
     <div id="pie_tooltip" style="position: absolute; display: none; background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color); padding: 0.5rem 0.75rem; border-radius: 0.25rem; pointer-events: none; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-size: 0.875rem; white-space: nowrap;"></div>
     
