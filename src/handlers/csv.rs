@@ -1,13 +1,73 @@
-use crate::{models::*, request_context::RequestContext, AppState};
+use crate::{AppState, models::*, request_context::RequestContext};
 use askama::Template;
 use axum::extract::{Multipart, State};
-use axum::{response::IntoResponse, Form};
-use csv::ReaderBuilder;
+use axum::{Form, response::IntoResponse};
+use csv::{ReaderBuilder, StringRecord};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 const CSV_SESSION_KEY: &str = "csv_upload";
+
+#[derive(Debug, Deserialize)]
+pub struct ColumnMapping {
+    pub file_id: String,
+    pub date_column: String,
+    pub amount_column: String,
+    pub amount_multiplier: Option<String>,
+    pub description_column: String,
+    pub transaction_type: String,
+    pub account_column: Option<String>,
+    pub account_fixed_value: Option<String>,
+    pub category_column: Option<String>,
+    #[serde(default)]
+    header_map: HashMap<String, usize>,
+}
+
+impl ColumnMapping {
+    pub fn non_empty_value<'a>(
+        &self,
+        record: &'a StringRecord,
+        col_name: Option<&str>,
+    ) -> Result<&'a str, String> {
+        let Some(col_name) = col_name else {
+            return Err("Can't lookup value without column name".to_string());
+        };
+
+        self.header_map
+            .get(col_name)
+            .and_then(|&idx| record.get(idx))
+            .map(|s| {
+                let s = s.trim();
+                if s.is_empty() {
+                    Err(format!("Column {col_name} is empty"))
+                } else {
+                    Ok(s)
+                }
+            })
+            .unwrap_or(Err(format!("Column {col_name} not found")))
+    }
+
+    pub fn value<'a>(
+        &self,
+        record: &'a StringRecord,
+        col_name: Option<&str>,
+    ) -> Result<&'a str, String> {
+        let Some(col_name) = col_name else {
+            return Err("Can't lookup value without column name".to_string());
+        };
+
+        self.header_map
+            .get(col_name)
+            .and_then(|&idx| record.get(idx))
+            .ok_or(format!("Column {col_name} not found"))
+    }
+
+    pub fn with_header_map(self, header_map: HashMap<String, usize>) -> Self {
+        Self { header_map, ..self }
+    }
+}
 
 #[derive(Template)]
 #[template(path = "csv_imported.html")]
@@ -40,7 +100,7 @@ pub async fn csv_import_handler(
     ctx: RequestContext,
     Form(mapping): Form<ColumnMapping>,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
     let csv_session: CsvUploadSession = match session.get(CSV_SESSION_KEY).await {
         Ok(Some(s)) => s,
         Ok(None) => return Err(super::session_error(None)),
@@ -52,7 +112,7 @@ pub async fn csv_import_handler(
     }
 
     let file_path = PathBuf::from(&csv_session.file_path);
-    let result = import_csv_file(&state, &user, &file_path, &mapping).await;
+    let result = import_csv_file(&state, &user, &file_path, mapping).await;
 
     fs::remove_file(&file_path).ok();
     session
@@ -76,7 +136,7 @@ pub async fn csv_upload_handler(
     ctx: RequestContext,
     mut multipart: Multipart,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
     let temp_dir = std::env::temp_dir();
 
     while let Some(field) = multipart.next_field().await.map_err(|err| {
@@ -121,13 +181,9 @@ pub async fn csv_upload_handler(
             .await
             .map_err(|err| super::render_error(&err.to_string(), "Failed to insert session"))?;
 
-        let categories = sqlx::query_as::<_, Category>(
-            "SELECT * FROM categories WHERE user_id = ? ORDER BY name",
-        )
-        .bind(user.id)
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to load categories"))?;
+        let categories = Category::categories_for_user(&state.pool, user.id)
+            .await
+            .map_err(|err| super::db_error(err, "Unable to fetch categories"))?;
 
         let template = CsvMappingTemplate {
             ctx,
@@ -152,7 +208,7 @@ pub async fn csv_upload_page(
     session: tower_sessions::Session,
     ctx: RequestContext,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
     let template = CsvUploadTemplate { ctx, user };
 
     Ok(template
@@ -176,7 +232,7 @@ async fn import_csv_file(
     state: &AppState,
     user: &User,
     path: &PathBuf,
-    mapping: &ColumnMapping,
+    mapping: ColumnMapping,
 ) -> Result<ImportResult, String> {
     let mut reader = ReaderBuilder::new()
         .has_headers(true)
@@ -184,52 +240,41 @@ async fn import_csv_file(
         .map_err(|e| e.to_string())?;
 
     let headers = reader.headers().map_err(|e| e.to_string())?;
-    let header_map: HashMap<String, usize> = headers
-        .iter()
-        .enumerate()
-        .map(|(i, h)| (h.to_string(), i))
-        .collect();
+
+    let mapping = mapping.with_header_map(
+        headers
+            .iter()
+            .enumerate()
+            .map(|(i, h)| (h.to_string(), i))
+            .collect(),
+    );
 
     let mut total_rows = 0;
     let mut successful = 0;
     let mut skipped = 0;
     let mut errors = Vec::new();
-    let mut categories_created = std::collections::HashSet::new();
-    let mut accounts_created = std::collections::HashSet::new();
 
     for (row_idx, result) in reader.records().enumerate() {
         let row_number = row_idx + 2;
         total_rows += 1;
 
         match result {
-            Ok(record) => {
-                match import_row(
-                    state,
-                    user,
-                    &record,
-                    &header_map,
-                    mapping,
-                    &mut categories_created,
-                    &mut accounts_created,
-                )
-                .await
-                {
-                    Ok(imported) => {
-                        if imported {
-                            successful += 1;
-                        } else {
-                            skipped += 1;
-                        }
-                    }
-                    Err(e) => {
-                        errors.push(ImportError {
-                            row_number,
-                            row_data: format!("{:?}", record),
-                            error: e,
-                        });
+            Ok(record) => match import_row(state, user, &record, &mapping).await {
+                Ok(imported) => {
+                    if imported {
+                        successful += 1;
+                    } else {
+                        skipped += 1;
                     }
                 }
-            }
+                Err(e) => {
+                    errors.push(ImportError {
+                        row_number,
+                        row_data: format!("{:?}", record),
+                        error: e,
+                    });
+                }
+            },
             Err(e) => {
                 errors.push(ImportError {
                     row_number,
@@ -240,252 +285,92 @@ async fn import_csv_file(
         }
     }
 
-    let mut categories_created_vec: Vec<String> = categories_created.into_iter().collect();
-    categories_created_vec.sort();
-
-    let mut accounts_created_vec: Vec<String> = accounts_created.into_iter().collect();
-    accounts_created_vec.sort();
-
     Ok(ImportResult {
         total_rows,
         successful,
         failed: errors.len(),
         skipped,
         errors,
-        categories_created: categories_created_vec,
-        accounts_created: accounts_created_vec,
     })
 }
 
 async fn import_row(
     state: &AppState,
     user: &User,
-    record: &csv::StringRecord,
-    header_map: &HashMap<String, usize>,
+    record: &StringRecord,
     mapping: &ColumnMapping,
-    categories_created: &mut std::collections::HashSet<String>,
-    accounts_created: &mut std::collections::HashSet<String>,
 ) -> Result<bool, String> {
-    let get_field = |col: &str| -> Result<String, String> {
-        header_map
-            .get(col)
-            .and_then(|&idx| record.get(idx))
-            .map(|s| s.to_string())
-            .ok_or_else(|| format!("Column '{}' not found", col))
+    let mut t = Transaction {
+        id: 0,
+        user_id: user.id,
+        account_id: None,
+        account: None,
+        category_id: None,
+        amount: 0.0,
+        original_amount: normalize_amount(mapping.value(record, Some(&mapping.amount_column))?)?,
+        description: mapping
+            .value(record, Some(&mapping.description_column))?
+            .to_string(),
+        transaction_date: normalize_date(mapping.value(record, Some(&mapping.date_column))?)?,
+        transaction_type: mapping.transaction_type.to_lowercase().trim().to_string(),
     };
 
-    let date_str = get_field(&mapping.date_column)?;
-    let transaction_date = normalize_date(&date_str)?;
+    t.amount = t.original_amount
+        * mapping
+            .amount_multiplier
+            .as_ref()
+            .and_then(|m| m.parse::<f64>().ok())
+            .unwrap_or(1.0);
 
-    let amount_str = get_field(&mapping.amount_column)?;
-    let original_amount: f64 = amount_str
-        .trim()
-        .replace(",", "")
-        .replace("$", "")
-        .parse()
-        .map_err(|_| format!("Invalid amount: {}", amount_str))?;
+    t.transaction_type = match t.transaction_type.as_str() {
+        "income" if t.original_amount < 0.0 => "expense".into(),
+        "expense" if t.original_amount < 0.0 => "income".into(),
+        other => return Err(format!("Unexpected transaction_type {other}")),
+    };
 
-    // Apply multiplier if specified
-    let multiplier = mapping
-        .amount_multiplier
-        .as_ref()
-        .and_then(|m| m.parse::<f64>().ok())
-        .unwrap_or(1.0);
-
-    let amount = original_amount * multiplier;
-    let description = get_field(&mapping.description_column)?;
-
-    // Determine transaction type based on amount sign and fixed type value
-    let fixed_type = mapping.type_fixed_value.to_lowercase().trim().to_string();
-    if fixed_type != "income" && fixed_type != "expense" {
-        return Err(format!(
-            "Invalid transaction type: {}. Must be 'income' or 'expense'",
-            fixed_type
-        ));
+    let account_name = mapping
+        .non_empty_value(record, mapping.account_column.as_deref())
+        .map(|v| Some(v.to_string()))
+        .unwrap_or(mapping.account_fixed_value.clone());
+    if let Some(account_name) = &account_name {
+        t.account_id = Some(
+            AccountWithOwnership::ensure(&state.pool, account_name)
+                .await
+                .map_err(|err| err.to_string())?,
+        );
     }
 
-    // Logic: If fixed type is "income", negative amounts are expenses and positive are income
-    //        If fixed type is "expense", negative amounts are income and positive are expenses
-    let transaction_type = if fixed_type == "income" {
-        if amount < 0.0 {
-            "expense"
-        } else {
-            "income"
-        }
-    } else {
-        // fixed_type == "expense"
-        if amount < 0.0 {
-            "income"
-        } else {
-            "expense"
-        }
+    let category_name = mapping.non_empty_value(record, mapping.category_column.as_deref());
+    if let Ok(category_name) = &category_name {
+        t.category_id = Some(
+            Category::ensure(&state.pool, user.id, category_name)
+                .await
+                .map_err(|err| err.to_string())?,
+        );
     }
-    .to_string();
-
-    // Account: use column value if specified, otherwise use fixed value
-    let account_name = if let Some(col) = &mapping.account_column {
-        if !col.is_empty() {
-            get_field(col).ok()
-        } else {
-            mapping.account_fixed_value.clone()
-        }
-    } else {
-        mapping.account_fixed_value.clone()
-    };
-
-    // Handle account (create if needed and get account_id)
-    let account_id = if let Some(acc_name) = &account_name {
-        let acc_name = acc_name.trim();
-        if !acc_name.is_empty() {
-            // Check if account exists
-            let existing = sqlx::query_scalar::<_, i64>("SELECT id FROM accounts WHERE name = ?")
-                .bind(acc_name)
-                .fetch_optional(&state.pool)
-                .await
-                .map_err(|e| format!("Database error: {}", e))?;
-
-            let acc_id = if let Some(id) = existing {
-                id
-            } else {
-                // Create new account
-                let result = sqlx::query("INSERT INTO accounts (name) VALUES (?)")
-                    .bind(acc_name)
-                    .execute(&state.pool)
-                    .await
-                    .map_err(|e| format!("Failed to create account '{}': {}", acc_name, e))?;
-
-                accounts_created.insert(acc_name.to_string());
-                result.last_insert_rowid()
-            };
-
-            // Ensure user has access to this account
-            sqlx::query("INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)")
-                .bind(user.id)
-                .bind(acc_id)
-                .execute(&state.pool)
-                .await
-                .map_err(|e| format!("Failed to link account: {}", e))?;
-
-            Some(acc_id)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    let category_id = if let Some(cat_col) = &mapping.category_column {
-        if !cat_col.is_empty() {
-            if let Ok(cat_name) = get_field(cat_col) {
-                let cat_name = cat_name.trim();
-                if !cat_name.is_empty() {
-                    // First, try to find existing category
-                    let existing = sqlx::query_scalar::<_, i64>(
-                        "SELECT id FROM categories WHERE user_id = ? AND name = ?",
-                    )
-                    .bind(user.id)
-                    .bind(cat_name)
-                    .fetch_optional(&state.pool)
-                    .await
-                    .map_err(|e| format!("Database error: {}", e))?;
-
-                    if let Some(cat_id) = existing {
-                        Some(cat_id)
-                    } else {
-                        // Category doesn't exist, create it
-                        let result =
-                            sqlx::query("INSERT INTO categories (user_id, name) VALUES (?, ?)")
-                                .bind(user.id)
-                                .bind(cat_name)
-                                .execute(&state.pool)
-                                .await
-                                .map_err(|e| {
-                                    format!("Failed to create category '{}': {}", cat_name, e)
-                                })?;
-
-                        categories_created.insert(cat_name.to_string());
-                        Some(result.last_insert_rowid())
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
 
     // Apply import rules if category/account not set from CSV
-    let mut final_category_id = category_id;
-    let mut final_account_id = account_id;
-
-    if category_id.is_none() || account_id.is_none() {
-        // Fetch rules and apply first match
-        let rules = sqlx::query_as::<_, ImportRule>(
-            "SELECT * FROM import_rules WHERE user_id = ? ORDER BY priority ASC, id ASC",
-        )
-        .bind(user.id)
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|e| format!("Database error fetching rules: {}", e))?;
-
-        let description_lower = description.to_lowercase();
-        if let Some(matched_rule) = rules
-            .iter()
-            .find(|rule| description_lower.contains(&rule.pattern.to_lowercase()))
+    if t.category_id.is_none() || t.account_id.is_none() {
+        for rule in ImportRuleWithNames::rules_for_user(&state.pool, user.id)
+            .await
+            .map_err(|e| format!("Database error fetching rules: {}", e))?
         {
-            if category_id.is_none() && matched_rule.category_id.is_some() {
-                final_category_id = matched_rule.category_id;
-            }
-            if account_id.is_none() && matched_rule.account_id.is_some() {
-                final_account_id = matched_rule.account_id;
-            }
+            rule.apply_to_transaction(&mut t);
         }
     }
 
-    // Check for duplicate transaction (same date, amount, and description)
-    let duplicate_exists = sqlx::query_scalar::<_, i64>(
-        r#"
-        SELECT COUNT(*) FROM transactions 
-        WHERE user_id = ? AND transaction_date = ? AND amount = ? AND description = ?
-        "#,
-    )
-    .bind(user.id)
-    .bind(&transaction_date)
-    .bind(amount)
-    .bind(&description)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| format!("Database error checking duplicates: {}", e))?;
-
-    if duplicate_exists > 0 {
-        return Ok(false); // Skipped duplicate
-    }
-
-    sqlx::query(
-        r#"
-        INSERT INTO transactions (user_id, category_id, account_id, amount, original_amount, description, transaction_date, type, account)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        "#,
-    )
-    .bind(user.id)
-    .bind(final_category_id)
-    .bind(final_account_id)
-    .bind(amount)
-    .bind(original_amount)
-    .bind(&description)
-    .bind(&transaction_date)
-    .bind(&transaction_type)
-    .bind(&account_name)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| format!("Database error: {}", e))?;
+    t.create_or_update(&state.pool)
+        .await
+        .map_err(|e| format!("Database error inserting transaction: {}", e))?;
 
     Ok(true) // Successfully imported
+}
+
+fn normalize_amount(num: &str) -> Result<f64, String> {
+    num.trim()
+        .replace(",", "")
+        .parse()
+        .map_err(|_| format!("Invalid amount: {num}"))
 }
 
 fn normalize_date(date_str: &str) -> Result<String, String> {

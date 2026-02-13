@@ -34,30 +34,6 @@
     </div>
   </section>
 
-  {% if !result.categories_created.is_empty() %}
-    <section>
-      <h2>✨ Categories Automaticallyh2>
-      <p>The following categories were created during import:</p>
-      <ul>
-        {% for category in result.categories_created %}
-        <li>{{ category }}</li>
-        {% endfor %}
-      </ul>
-    </section>
-  {% endif %}
-
-  {% if !result.accounts_created.is_empty() %}
-    <section>
-      <h2>🏦 Accounts Automaticallyh2>
-      <p>The following accounts were created during import:</p>
-      <ul>
-        {% for account in result.accounts_created %}
-        <li>{{ account }}</li>
-        {% endfor %}
-      </ul>
-    </section>
-  {% endif %}
-
   {% if !result.errors.is_empty() %}
     <section>
       <h2>Import Errors</h2>

@@ -1,35 +1,17 @@
-use crate::{models::*, AppState};
+use crate::{AppState, models::*};
 use axum::response::IntoResponse;
-use axum::{extract::State, Form};
+use axum::{Form, extract::State};
 
 pub async fn create_account_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    Form(new_account): Form<NewAccount>,
+    Form(account): Form<AccountWithOwnership>,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
-
-    let account_id = sqlx::query_scalar::<_, i64>("SELECT id FROM accounts WHERE name = ?")
-        .bind(&new_account.name)
-        .fetch_optional(&state.pool)
+    let user = auth::get_current_user(&state.pool, &session).await?;
+    account
+        .create_for_user(&state.pool, user.id)
         .await
-        .map_err(|err| super::db_error(err, "Unable to find existing account"))?
-        .unwrap_or(
-            sqlx::query("INSERT INTO accounts (name, description) VALUES (?, ?)")
-                .bind(&new_account.name)
-                .bind(&new_account.description)
-                .execute(&state.pool)
-                .await
-                .map_err(|err| super::db_error(err, "Unable to insert new account"))?
-                .last_insert_rowid(),
-        );
-
-    sqlx::query("INSERT OR IGNORE INTO user_accounts (user_id, account_id) VALUES (?, ?)")
-        .bind(user.id)
-        .bind(account_id)
-        .execute(&state.pool)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to link account to user"))?;
+        .map_err(|err| super::db_error(err, "Unable to create account"))?;
 
     Ok(axum::response::Redirect::to("/settings").into_response())
 }
@@ -37,17 +19,13 @@ pub async fn create_account_handler(
 pub async fn toggle_account_ownership_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    Form(toggle): Form<ToggleAccountOwnership>,
+    Form(account): Form<AccountWithOwnership>,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
-
-    sqlx::query("UPDATE user_accounts SET is_mine = ? WHERE user_id = ? AND account_id = ?")
-        .bind(toggle.is_mine)
-        .bind(user.id)
-        .bind(toggle.account_id)
-        .execute(&state.pool)
+    let user = auth::get_current_user(&state.pool, &session).await?;
+    account
+        .attach_to_user(&state.pool, user.id)
         .await
-        .map_err(|err| super::db_error(err, "Unable to toggle account ownership"))?;
+        .map_err(|err| super::db_error(err, "Unable to update account"))?;
 
     Ok(axum::response::Redirect::to("/settings").into_response())
 }

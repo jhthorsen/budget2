@@ -15,7 +15,7 @@ pub async fn index_handler(
     session: tower_sessions::Session,
     ctx: RequestContext,
 ) -> crate::HttpResult {
-    if auth::get_current_user(&session, &state.pool).await.is_ok() {
+    if auth::get_current_user(&state.pool, &session).await.is_ok() {
         return Ok(axum::response::Redirect::to("/dashboard").into_response());
     }
 

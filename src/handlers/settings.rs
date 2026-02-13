@@ -17,32 +17,14 @@ pub async fn settings_page(
     session: tower_sessions::Session,
     ctx: RequestContext,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
-
-    let categories =
-        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
-            .bind(user.id)
-            .fetch_all(&state.pool)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to get list of categories"))?;
-
-    let accounts = sqlx::query_as::<_, AccountWithOwnership>(
-        r#"
-        SELECT a.id, a.name, a.description, ua.is_mine
-        FROM accounts a
-        INNER JOIN user_accounts ua ON a.id = ua.account_id
-        WHERE ua.user_id = ?
-        ORDER BY a.name
-        "#,
-    )
-    .bind(user.id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|err| super::db_error(err, "Unable to get list of accounts"))?;
-
+    let user = auth::get_current_user(&state.pool, &session).await?;
     let template = SettingsTemplate {
-        accounts,
-        categories,
+        accounts: AccountWithOwnership::accounts_for_user(&state.pool, user.id)
+            .await
+            .map_err(|err| super::db_error(err, "Unable to fetch accounts"))?,
+        categories: Category::categories_for_user(&state.pool, user.id)
+            .await
+            .map_err(|err| super::db_error(err, "Unable to fetch categories"))?,
         ctx,
         user,
     };

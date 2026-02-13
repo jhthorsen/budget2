@@ -1,10 +1,8 @@
-use crate::{models::*, request_context::RequestContext, AppState};
+use crate::{AppState, models::*, request_context::RequestContext};
 use askama::Template;
-use axum::{
-    extract::{Path, State},
-    response::IntoResponse,
-    Form,
-};
+use axum::Form;
+use axum::extract::{Path, State};
+use axum::response::IntoResponse;
 
 #[derive(Template)]
 #[template(path = "rules_list.html")]
@@ -26,23 +24,8 @@ struct RulesFormTemplate {
     accounts: Vec<AccountWithOwnership>,
     categories: Vec<Category>,
     ctx: RequestContext,
-    rule: Option<ImportRule>,
+    rule: Option<ImportRuleWithNames>,
     user: User,
-}
-
-#[derive(Debug, sqlx::FromRow, serde::Serialize)]
-struct ImportRuleWithNames {
-    id: i64,
-    #[allow(dead_code)]
-    user_id: i64,
-    pattern: String,
-    #[allow(dead_code)]
-    category_id: Option<i64>,
-    category_name: Option<String>,
-    #[allow(dead_code)]
-    account_id: Option<i64>,
-    account_name: Option<String>,
-    priority: i64,
 }
 
 pub async fn rules_list(
@@ -50,24 +33,10 @@ pub async fn rules_list(
     session: tower_sessions::Session,
     ctx: RequestContext,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
-
-    let rules = sqlx::query_as::<_, ImportRuleWithNames>(
-        r#"
-        SELECT 
-            r.id, r.user_id, r.pattern, r.category_id, c.name as category_name,
-            r.account_id, a.name as account_name, r.priority
-        FROM import_rules r
-        LEFT JOIN categories c ON r.category_id = c.id
-        LEFT JOIN accounts a ON r.account_id = a.id
-        WHERE r.user_id = ?
-        ORDER BY c.name ASC NULLS FIRST, r.priority ASC, r.id ASC
-        "#,
-    )
-    .bind(user.id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|err| super::db_error(err, "Unable to get list of rules"))?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
+    let rules = ImportRuleWithNames::rules_for_user(&state.pool, user.id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to fetch rules"))?;
 
     // Group rules by category
     let mut grouped_rules: Vec<CategoryGroup> = Vec::new();
@@ -125,28 +94,13 @@ pub async fn rules_new_page(
     session: tower_sessions::Session,
     ctx: RequestContext,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
-
-    let categories =
-        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
-            .bind(user.id)
-            .fetch_all(&state.pool)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to get list of categories"))?;
-
-    let accounts = sqlx::query_as::<_, AccountWithOwnership>(
-        r#"
-        SELECT a.id, a.name, a.description, ua.is_mine
-        FROM accounts a
-        JOIN user_accounts ua ON a.id = ua.account_id
-        WHERE ua.user_id = ?
-        ORDER BY a.name
-        "#,
-    )
-    .bind(user.id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|err| super::db_error(err, "Unable to get list of accounts"))?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
+    let categories = Category::categories_for_user(&state.pool, user.id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to fetch categories"))?;
+    let accounts = AccountWithOwnership::accounts_for_user(&state.pool, user.id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to fetch accounts"))?;
 
     let template = RulesFormTemplate {
         accounts,
@@ -168,34 +122,25 @@ pub async fn rules_create(
     session: tower_sessions::Session,
     Form(form): Form<ImportRuleForm>,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
+    let mut rule = ImportRuleWithNames {
+        category_id: form
+            .category_id
+            .and_then(|s| if s.is_empty() { None } else { Some(s) })
+            .and_then(|s| s.parse::<i64>().ok()),
+        account_id: form
+            .account_id
+            .and_then(|s| if s.is_empty() { None } else { Some(s) })
+            .and_then(|s| s.parse::<i64>().ok()),
+        user_id: user.id,
+        pattern: form.pattern,
+        priority: form.priority.parse::<i64>().unwrap_or(999),
+        ..ImportRuleWithNames::default()
+    };
 
-    let category_id = form
-        .category_id
-        .and_then(|s| if s.is_empty() { None } else { Some(s) })
-        .and_then(|s| s.parse::<i64>().ok());
-
-    let account_id = form
-        .account_id
-        .and_then(|s| if s.is_empty() { None } else { Some(s) })
-        .and_then(|s| s.parse::<i64>().ok());
-
-    let priority = form.priority.parse::<i64>().unwrap_or(999);
-
-    sqlx::query(
-        r#"
-        INSERT INTO import_rules (user_id, pattern, category_id, account_id, priority)
-        VALUES (?, ?, ?, ?, ?)
-        "#,
-    )
-    .bind(user.id)
-    .bind(&form.pattern)
-    .bind(category_id)
-    .bind(account_id)
-    .bind(priority)
-    .execute(&state.pool)
-    .await
-    .map_err(|err| super::db_error(err, "Unable to insert new rule"))?;
+    rule.create(&state.pool)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to save rule"))?;
 
     Ok(axum::response::Redirect::to("/rules").into_response())
 }
@@ -206,37 +151,17 @@ pub async fn rules_edit_page(
     Path(rule_id): Path<i64>,
     ctx: RequestContext,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
-
-    let rule =
-        sqlx::query_as::<_, ImportRule>("SELECT * FROM import_rules WHERE id = ? AND user_id = ?")
-            .bind(rule_id)
-            .bind(user.id)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(|err| super::db_error(err, "Unable find rule"))?
-            .ok_or_else(|| (axum::http::StatusCode::NOT_FOUND, "Rule not found").into_response())?;
-
-    let categories =
-        sqlx::query_as::<_, Category>("SELECT * FROM categories WHERE user_id = ? ORDER BY name")
-            .bind(user.id)
-            .fetch_all(&state.pool)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to get list of categories"))?;
-
-    let accounts = sqlx::query_as::<_, AccountWithOwnership>(
-        r#"
-        SELECT a.id, a.name, a.description, ua.is_mine
-        FROM accounts a
-        JOIN user_accounts ua ON a.id = ua.account_id
-        WHERE ua.user_id = ?
-        ORDER BY a.name
-        "#,
-    )
-    .bind(user.id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|err| super::db_error(err, "Unable to get list of accounts"))?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
+    let rule = ImportRuleWithNames::get(&state.pool, user.id, rule_id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable find rule"))?
+        .ok_or_else(|| (axum::http::StatusCode::NOT_FOUND, "Rule not found").into_response())?;
+    let categories = Category::categories_for_user(&state.pool, user.id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to fetch categories"))?;
+    let accounts = AccountWithOwnership::accounts_for_user(&state.pool, user.id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to fetch accounts"))?;
 
     let template = RulesFormTemplate {
         accounts,
@@ -259,36 +184,27 @@ pub async fn rules_update(
     Path(rule_id): Path<i64>,
     Form(form): Form<ImportRuleForm>,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
 
-    let category_id = form
-        .category_id
-        .and_then(|s| if s.is_empty() { None } else { Some(s) })
-        .and_then(|s| s.parse::<i64>().ok());
+    let mut rule = ImportRuleWithNames {
+        id: rule_id,
+        user_id: user.id,
+        category_id: form
+            .category_id
+            .and_then(|s| if s.is_empty() { None } else { Some(s) })
+            .and_then(|s| s.parse::<i64>().ok()),
+        account_id: form
+            .account_id
+            .and_then(|s| if s.is_empty() { None } else { Some(s) })
+            .and_then(|s| s.parse::<i64>().ok()),
+        pattern: form.pattern,
+        priority: form.priority.parse::<i64>().unwrap_or(999),
+        ..ImportRuleWithNames::default()
+    };
 
-    let account_id = form
-        .account_id
-        .and_then(|s| if s.is_empty() { None } else { Some(s) })
-        .and_then(|s| s.parse::<i64>().ok());
-
-    let priority = form.priority.parse::<i64>().unwrap_or(999);
-
-    sqlx::query(
-        r#"
-        UPDATE import_rules 
-        SET pattern = ?, category_id = ?, account_id = ?, priority = ?
-        WHERE id = ? AND user_id = ?
-        "#,
-    )
-    .bind(&form.pattern)
-    .bind(category_id)
-    .bind(account_id)
-    .bind(priority)
-    .bind(rule_id)
-    .bind(user.id)
-    .execute(&state.pool)
-    .await
-    .map_err(|err| super::db_error(err, "Unable to update rule"))?;
+    rule.update(&state.pool)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to save rule"))?;
 
     Ok(axum::response::Redirect::to("/rules").into_response())
 }
@@ -298,76 +214,41 @@ pub async fn rules_delete(
     session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
+    let mut rule = ImportRuleWithNames {
+        id: rule_id,
+        user_id: user.id,
+        ..ImportRuleWithNames::default()
+    };
 
-    sqlx::query("DELETE FROM import_rules WHERE id = ? AND user_id = ?")
-        .bind(rule_id)
-        .bind(user.id)
-        .execute(&state.pool)
+    rule.delete(&state.pool)
         .await
         .map_err(|err| super::db_error(err, "Unable to delete rule"))?;
 
     Ok(axum::response::Redirect::to("/rules").into_response())
 }
 
-pub async fn rules_apply(
+pub async fn apply_rule_to_transactions(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&session, &state.pool).await?;
-
-    // Fetch the specific rule
-    let rule =
-        sqlx::query_as::<_, ImportRule>("SELECT * FROM import_rules WHERE id = ? AND user_id = ?")
-            .bind(rule_id)
-            .bind(user.id)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to find rule"))?
-            .ok_or_else(|| (axum::http::StatusCode::NOT_FOUND, "Rule not found").into_response())?;
-
-    let transactions =
-        sqlx::query_as::<_, Transaction>("SELECT * FROM transactions WHERE user_id = ?")
-            .bind(user.id)
-            .fetch_all(&state.pool)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to find transactions"))?;
+    let user = auth::get_current_user(&state.pool, &session).await?;
+    let rule = ImportRuleWithNames::get(&state.pool, user.id, rule_id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to find rule"))?
+        .ok_or_else(|| super::render_error("Rule not found", ""))?;
+    let mut transactions = Transaction::transactions_for_user(&state.pool, user.id)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to find transactions"))?;
 
     let mut updated_count = 0;
-    let description_lower = rule.pattern.to_lowercase();
-
-    for transaction in transactions {
-        if transaction
-            .description
-            .to_lowercase()
-            .contains(&description_lower)
-        {
-            let mut needs_update = false;
-            let mut new_category_id = transaction.category_id;
-            let mut new_account_id = transaction.account_id;
-
-            if rule.category_id.is_some() && transaction.category_id.is_none() {
-                new_category_id = rule.category_id;
-                needs_update = true;
-            }
-
-            if rule.account_id.is_some() && transaction.account_id.is_none() {
-                new_account_id = rule.account_id;
-                needs_update = true;
-            }
-
-            if needs_update {
-                sqlx::query("UPDATE transactions SET category_id = ?, account_id = ? WHERE id = ?")
-                    .bind(new_category_id)
-                    .bind(new_account_id)
-                    .bind(transaction.id)
-                    .execute(&state.pool)
-                    .await
-                    .map_err(|err| super::db_error(err, "Unable to update transactions"))?;
-
-                updated_count += 1;
-            }
+    for t in transactions.iter_mut() {
+        if rule.apply_to_transaction(t) {
+            t.create_or_update(&state.pool)
+                .await
+                .map_err(|err| super::db_error(err, "Unable to update transaction"))?;
+            updated_count += 1;
         }
     }
 

@@ -60,7 +60,7 @@
             </td>
             <td>
               <form action="/accounts/toggle-ownership" method="post" style="margin: 0;">
-                <input type="hidden" name="account_id" value="{{ account.id }}">
+                <input type="hidden" name="id" value="{{ account.id }}">
                 <input type="hidden" name="is_mine" value="{% if account.is_mine %}false{% else %}true{% endif %}">
                 <button type="submit" class="{% if account.is_mine %}contrast{% else %}secondary{% endif %}" style="padding: 0.25rem 0.5rem;">
                   {% if account.is_mine %}✓ Mine{% else %}Add to Balance{% endif %}

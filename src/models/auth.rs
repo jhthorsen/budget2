@@ -1,6 +1,6 @@
 use super::User;
 use axum::response::IntoResponse;
-use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl, basic::BasicClient};
 use serde::Deserialize;
 
 pub(crate) const SESSION_USER_KEY: &str = "user_id";
@@ -48,6 +48,48 @@ pub(crate) struct OAuthUserInfo {
     pub id: String,
 }
 
+impl OAuthUserInfo {
+    pub async fn get_or_create_user(
+        &self,
+        pool: &sqlx::SqlitePool,
+        provider: &str,
+    ) -> Result<User, sqlx::Error> {
+        let user = sqlx::query_as!(
+            User,
+            r#"select id as 'id!', email, name, oauth_provider, oauth_id
+            from users
+            where oauth_provider = ? and oauth_id = ?"#,
+            provider,
+            self.id,
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some(user) = user {
+            return Ok(user);
+        }
+
+        let name = self.name.as_deref().unwrap_or(&self.email);
+        sqlx::query!(
+            r#"insert or ignore into users (email, name, oauth_provider, oauth_id) values (?, ?, ?, ?)"#,
+            self.email,
+            name,
+            provider,
+            self.id,
+        )
+        .execute(pool)
+        .await?;
+
+        sqlx::query_as!(
+            User,
+            r#"select id as 'id!', email, name, oauth_provider, oauth_id from users where email = ?"#,
+            self.email,
+        )
+        .fetch_one(pool)
+        .await
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct OidcDiscovery {
     authorization_endpoint: String,
@@ -76,17 +118,22 @@ pub async fn create_oauth_client() -> Result<(BasicClient, String), OauthError> 
 }
 
 pub async fn get_current_user(
-    session: &tower_sessions::Session,
     pool: &sqlx::SqlitePool,
+    session: &tower_sessions::Session,
 ) -> Result<User, axum::response::Response> {
     let Ok(Some(user_id)) = session.get::<i64>(SESSION_USER_KEY).await else {
         return Err(axum::response::Redirect::to("/?error=no_session").into_response());
     };
 
-    sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|_| axum::response::Redirect::to("/?error=db_error").into_response())?
-        .ok_or(axum::response::Redirect::to("/?error=user_not_found").into_response())
+    sqlx::query_as!(
+        User,
+        r#"select id as 'id!', email, name, oauth_provider, oauth_id
+        from users
+        where id = ?"#,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| axum::response::Redirect::to("/?error=db_error").into_response())?
+    .ok_or(axum::response::Redirect::to("/?error=user_not_found").into_response())
 }

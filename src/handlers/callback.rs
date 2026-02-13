@@ -1,9 +1,8 @@
-use crate::models::auth::{OAuthUserInfo, SESSION_USER_KEY};
-use crate::models::*;
 use crate::AppState;
+use crate::models::auth::{OAuthUserInfo, SESSION_USER_KEY};
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
-use oauth2::{reqwest::async_http_client, AuthorizationCode, TokenResponse};
+use oauth2::{AuthorizationCode, TokenResponse, reqwest::async_http_client};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -37,7 +36,16 @@ pub async fn auth_callback(
         .await
         .map_err(|err| super::render_error(&err.to_string(), "Failed to parse user info"))?;
 
-    let user = get_or_create_user(&state.pool, &user_info).await?;
+    let provider = state
+        .oauth_client
+        .auth_url()
+        .url()
+        .host_str()
+        .unwrap_or("default");
+    let user = user_info
+        .get_or_create_user(&state.pool, provider)
+        .await
+        .map_err(|err| super::db_error(err, "Unable to create user"))?;
 
     session
         .insert(SESSION_USER_KEY, user.id)
@@ -50,43 +58,4 @@ pub async fn auth_callback(
         .map_err(|err| super::render_error(&err.to_string(), "Unable to save session"))?;
 
     Ok(axum::response::Redirect::to("/dashboard").into_response())
-}
-
-async fn get_or_create_user(
-    pool: &sqlx::SqlitePool,
-    user_info: &OAuthUserInfo,
-) -> Result<User, axum::response::Response> {
-    let provider = "default";
-    let name = user_info.name.as_deref().unwrap_or(&user_info.email);
-
-    let user =
-        sqlx::query_as::<_, User>("SELECT * FROM users WHERE oauth_provider = ? AND oauth_id = ?")
-            .bind(provider)
-            .bind(&user_info.id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|err| super::db_error(err, "Database error"))?;
-
-    if let Some(user) = user {
-        return Ok(user);
-    }
-
-    let result = sqlx::query(
-        "INSERT INTO users (email, name, oauth_provider, oauth_id) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&user_info.email)
-    .bind(name)
-    .bind(provider)
-    .bind(&user_info.id)
-    .execute(pool)
-    .await
-    .map_err(|err| super::db_error(err, "Database error"))?;
-
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
-        .bind(result.last_insert_rowid())
-        .fetch_one(pool)
-        .await
-        .map_err(|err| super::db_error(err, "Database error"))?;
-
-    Ok(user)
 }

@@ -53,7 +53,7 @@
 
     <label>
       Transaction Type <span style="color: red;">*</span>
-      <select name="type_fixed_value" id="type_fixed_value" required>
+      <select name="transaction_type" id="transaction_type" required>
         <option value="">-- Select Type --</option>
         <option value="income">Income</option>
         <option value="expense">Expense</option>
@@ -111,7 +111,7 @@
 
 <script nonce="{{ ctx.nonce }}">
   function validateForm(event) {
-    const typeFixed = document.getElementById('type_fixed_value').value
+    const typeFixed = document.getElementById('transaction_type').value
 
     if (!typeFixed) {
       event.preventDefault()
