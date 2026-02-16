@@ -3,7 +3,6 @@ use axum::response::IntoResponse;
 
 pub mod accounts;
 pub mod auth;
-pub mod callback;
 pub mod categories;
 pub mod csv;
 pub mod dashboard;
