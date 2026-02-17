@@ -1,6 +1,3 @@
-<summary role="button" id="accordion_pie_charts_summary">Chart by {% if filters.category_id > 0 %}Account{% else %}Category{% endif %}</summary>
-<summary role="button" id="accordion_bar_charts_summary">Chart by {% if filters.category_id > 0 %}Account{% else %}Category{% endif %}</summary>
-{% include "dashboard/pie_charts.html" %}
 {% include "dashboard/stacked_bar_chart.html" %}
 <table {% if filters.page > 1 %}data-swap="none"{% else %}data-template="tbody"{% endif %}>
   {% include "dashboard/transactions_table_body.html" %}

@@ -7,15 +7,7 @@
     <h1>📊 Dashboard</h1>
   </header>
 
-  <details name="accordion_pie_charts" open>
-    <summary role="button" id="accordion_pie_charts_summary">Distribution by {% if filters.category_id > 0 %}Account{% else %}Category{% endif %}</summary>
-    {% include "dashboard/pie_charts.html" %}
-  </details>
-
-  <details name="accordion_bar_charts">
-    <summary role="button" id="accordion_bar_charts_summary">Chart by {% if filters.category_id > 0 %}Account{% else %}Category{% endif %}</summary>
-    {% include "dashboard/stacked_bar_chart.html" %}
-  </details>
+  {% include "dashboard/stacked_bar_chart.html" %}
 
   <form method="get" action="/dashboard?filtered=true" id="form_filter">
     <input type="hidden" name="page" value="1">

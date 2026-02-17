@@ -2,6 +2,7 @@ pub mod auth;
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default, FromRow, Serialize, Deserialize)]
 pub struct AccountWithOwnership {
@@ -166,6 +167,36 @@ impl Category {
     }
 }
 
+#[derive(Debug, Default, Serialize)]
+pub struct ChartData {
+    pub by_day: HashMap<String, Vec<DayData>>,
+    pub legends: HashMap<String, String>,
+}
+
+impl ChartData {
+    pub fn color(&self, legend: &str) -> &str {
+        self.legends
+            .get(legend)
+            .map(|color| color.as_str())
+            .unwrap_or("gray")
+    }
+
+    pub fn x_labels(&self) -> Vec<(usize, &str)> {
+        let mut dates = self.by_day.keys().collect::<Vec<_>>();
+        dates.sort();
+
+        let n = dates.len() / 12;
+        let mut labels: Vec<(usize, &str)> = vec![];
+        for (i, date) in dates.iter().enumerate() {
+            if i > 0 && i % n == 0 {
+                labels.push((i, date.as_str()));
+            }
+        }
+
+        labels
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CsvUploadSession {
     pub file_id: String,
@@ -173,14 +204,14 @@ pub struct CsvUploadSession {
     pub headers: Vec<String>,
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(Clone, Debug, sqlx::FromRow, Serialize)]
 pub struct DayData {
-    pub day: i64,
-    pub group_id: Option<i64>,
-    pub group_name: Option<String>,
-    pub group_color: Option<String>,
+    pub date: String,
+    pub amount: f64,
+    pub color: String,
+    pub group_id: i64,
+    pub group_name: String,
     pub transaction_type: String,
-    pub total: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -359,32 +390,34 @@ impl Transaction {
             DayData,
             r#"select
               t.account_id as 'group_id!',
-              '' as group_color,
+              '' as color,
               t.type as transaction_type,
-              coalesce(a.name, 'no account') as group_name,
-              cast(strftime('%d', t.transaction_date) as integer) as 'day!',
-              cast(sum(t.amount) as real) as total
+              coalesce(a.name, 'No account') as group_name,
+              strftime('%Y-%m-%d', t.transaction_date) as 'date!',
+              cast(sum(t.amount) as real) as amount
             from transactions t
               left join accounts a on t.account_id = a.id
             where t.user_id = ?
-              and t.category_id = ?
               and (length(?) = 0 or t.type = ?)
+              and (? <= 0 or t.category_id = ?)
+              and (? = -1 or t.category_id = null)
               and (length(?) = 0 or t.description like ?)
               and (length(?) != 7 or strftime('%Y-%m', t.transaction_date) = ?)
               and (length(?) != 4 or strftime('%Y', t.transaction_date) = ?)
-            group by 'day!', t.account_id, t.type
-            order by 'day!', t.type, total desc
-            "#,
+            group by transaction_date, account_id, transaction_type
+            order by transaction_date, transaction_type, amount desc"#,
             self.user_id,
+            self.transaction_type,
+            self.transaction_type,
             self.category_id,
-            self.transaction_type,
-            self.transaction_date,
+            self.category_id,
+            self.category_id,
             description,
             description,
             self.transaction_date,
             self.transaction_date,
             self.transaction_date,
-            self.transaction_type,
+            self.transaction_date,
         )
         .fetch_all(pool)
         .await
@@ -400,25 +433,25 @@ impl Transaction {
             r#"select
               t.category_id as 'group_id!',
               t.type as transaction_type,
-              c.color as group_color,
-              coalesce(c.name, 'uncategorized') as group_name,
-              cast(strftime('%d', t.transaction_date) as integer) as 'day!',
-              cast(sum(t.amount) as real) as total
+              coalesce(c.color, '') as color,
+              coalesce(c.name, 'No category') as group_name,
+              strftime('%Y-%m-%d', t.transaction_date) as 'date!',
+              cast(sum(t.amount) as real) as amount
             from transactions t
             left join categories c on t.category_id = c.id
             where t.user_id = ?
-              and (? <= 0 or t.account_id = ?)
               and (length(?) = 0 or t.type = ?)
+              and (? <= 0 or t.account_id = ?)
               and (length(?) = 0 or t.description like ?)
               and (length(?) != 7 or strftime('%Y-%m', t.transaction_date) = ?)
               and (length(?) != 4 or strftime('%Y', t.transaction_date) = ?)
-            group by 'day!', t.category_id, t.type
-            order by 'day!', t.type, total desc"#,
+            group by transaction_date, category_id, transaction_type
+            order by transaction_date, transaction_type, amount desc"#,
             self.user_id,
-            self.account_id,
-            self.account_id,
             self.transaction_type,
             self.transaction_type,
+            self.account_id,
+            self.account_id,
             description,
             description,
             self.transaction_date,
@@ -542,7 +575,8 @@ impl Transaction {
             left join categories c on t.category_id = c.id
             left join accounts a on t.account_id = a.id
             where t.user_id = ?
-              and (length(?) = 0 or strftime('%Y-%m', t.transaction_date) = ?)
+              and (length(?) != 7 or strftime('%Y-%m', t.transaction_date) = ?)
+              and (length(?) != 4 or strftime('%Y', t.transaction_date) = ?)
               and (? <= 0 or t.account_id = ?)
               and (? <= 0 or t.category_id = ?)
               and (? > -1 or t.category_id is null)
@@ -551,6 +585,8 @@ impl Transaction {
             order by t.transaction_date desc
             limit ? offset ?"#,
             self.user_id,
+            self.transaction_date,
+            self.transaction_date,
             self.transaction_date,
             self.transaction_date,
             self.account_id,
@@ -611,64 +647,4 @@ pub struct User {
     pub name: String,
     pub oauth_provider: String,
     pub oauth_id: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct CategoryStack {
-    pub category_id: Option<i64>,
-    pub category_name: String,
-    pub category_color: String,
-    pub amount: f64,
-    pub y_pos: i32,
-    pub height: i32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct DayStack {
-    pub day: i64,
-    pub income_stacks: Vec<CategoryStack>,
-    pub expense_stacks: Vec<CategoryStack>,
-    pub total_income: f64,
-    pub total_expenses: f64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct PieSlice {
-    pub name: String,
-    pub color: String,
-    pub amount: f64,
-    pub percentage: i32,
-    pub start_x: i32,
-    pub start_y: i32,
-    pub end_x: i32,
-    pub end_y: i32,
-    pub large_arc: i32,
-}
-
-#[derive(Debug, Default, Serialize)]
-pub struct ChartData {
-    pub days: Vec<DayStack>,
-    pub max_income: f64,
-    pub max_expenses: f64,
-    pub total_income: f64,
-    pub total_expenses: f64,
-    pub all_categories: Vec<(String, String)>, // (name, color) for legend
-    pub income_pie_slices: Vec<PieSlice>,
-    pub expense_pie_slices: Vec<PieSlice>,
-}
-
-pub fn palette() -> Vec<&'static str> {
-    vec![
-        "oklch(65% 0.20 250)", // Blue
-        "oklch(70% 0.19 145)", // Green
-        "oklch(75% 0.20 50)",  // Orange
-        "oklch(68% 0.20 320)", // Purple
-        "oklch(72% 0.18 180)", // Cyan
-        "oklch(70% 0.20 25)",  // Red-Orange
-        "oklch(65% 0.15 280)", // Indigo
-        "oklch(73% 0.17 85)",  // Yellow-Green
-        "oklch(68% 0.18 350)", // Magenta
-        "oklch(70% 0.16 200)", // Sky Blue
-        "oklch(60% 0.10 270)", // Other (muted purple-gray)
-    ]
 }

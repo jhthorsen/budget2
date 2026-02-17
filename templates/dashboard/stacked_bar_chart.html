@@ -1,184 +1,240 @@
-<div id="chart_container" style="width: 100%; margin-bottom: 2rem; position: relative;">
-  {% if chart_data.days.is_empty() %}
-    <p style="text-align: center; padding: 2rem; opacity: 0.7;">No transaction data for the selected period</p>
-  {% else %}
-    <!-- Tooltip for displaying values -->
-    <div id="chart_tooltip" style="position: absolute; display: none; background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color); padding: 0.5rem 0.75rem; border-radius: 0.25rem; pointer-events: none; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-size: 0.875rem; white-space: nowrap;"></div>
-
-    <svg id="chart_svg" viewBox="0 0 900 400" style="width: 100%; height: auto; background: var(--pico-card-background-color); border-radius: 0.5rem; padding: 1rem;">
+{% let height = 300.0 %}
+{% let width = 900.0 %}
+{% let top = 20.0 %}
+{% let left = 80.0 %}
+{% let bar_width = width / chart_data.by_day.len().max(1) as f64 %}
+<section
+    id="chart_container"
+    style="position: relative"
+    data-init="renderChart(el, store)"
+    data-store="
+      $height = {{ height }};
+      $max = {income: 0, expense: 1};
+      $top = {{ top }};
+      $zeroLineRatio = 0;">
+  <div>
+    <svg id="chart" viewBox="0 0 {{ width + left + 0.0 }} {{ height + top + 20.0 }}"
+      data-height="{{ height }}" data-width="{{ width }}" data-top="{{ top }}" data-left="{{ left }}" data-bar-width="{{ bar_width }}">
       <!-- Y-axis -->
-      <line x1="60" y1="20" x2="60" y2="340" stroke="currentColor" stroke-opacity="0.3" stroke-width="1"/>
-
-      <!-- Zero line (horizontal at middle) -->
-      <line x1="60" y1="180" x2="880" y2="180" stroke="currentColor" stroke-opacity="0.5" stroke-width="2"/>
+      <line x1="{{ left }}" x2="{{ left }}" y1="{{ top }}" y2="{{ top + height }}" class="chart-line y-axis"/>
 
       <!-- Grid lines -->
-      <line x1="60" y1="60" x2="880" y2="60" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
-      <line x1="60" y1="100" x2="880" y2="100" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
-      <line x1="60" y1="140" x2="880" y2="140" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
-      <line x1="60" y1="220" x2="880" y2="220" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
-      <line x1="60" y1="260" x2="880" y2="260" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
-      <line x1="60" y1="300" x2="880" y2="300" stroke="currentColor" stroke-opacity="0.1" stroke-width="1"/>
+      <line class="chart-line" x1="{{ left }}" x2="{{ left + width }}" y1="{{ top }}" y2="{{ top }}"/>
+      <line class="chart-line" x1="{{ left }}" x2="{{ left + width }}"
+        data-bind="y1:{{ top }}+{{ height * 0.5 }}*$zeroLineRatio, y2:{{ top }}+{{ height * 0.5 }}*$zeroLineRatio"/>
+      <line class="chart-line" x1="{{ left }}" x2="{{ left + width }}"
+        data-bind="y1:{{ top }}+{{ height }}*$zeroLineRatio, y2:{{ top }}+{{ height }}*$zeroLineRatio"/>
+      <line class="chart-line" x1="{{ left }}" x2="{{ left + width }}"
+        data-bind="y1:{{ top }}+{{ height }}*$zeroLineRatio+{{ height * 0.5 }}*(1-$zeroLineRatio), y2:{{ top }}+{{ height }}*$zeroLineRatio+{{ height * 0.5 }}*(1-$zeroLineRatio)"/>
+      <line class="chart-line" x1="{{ left }}" x2="{{ left + width }}" y1="{{ top + height }}" y2="{{ top + height }}"/>
 
-      <!-- Bars for each day -->
-      {% for day_stack in chart_data.days %}
-        {% let x_pos = 60 + (day_stack.day - 1) * 820 / 31 %}
-        {% let bar_w = 820 / 31 - 2 %}
-
-        <!-- Expense stacks (going down from 180) -->
-        {% for stack in day_stack.expense_stacks %}
-          <rect
-            class="chart-bar"
-            data-category="{{ stack.category_name }}"
-            data-day="{{ day_stack.day }}"
-            data-amount="{{ stack.amount|format_amount }}"
-            data-type="expense"
-            x="{{ x_pos + 1 }}"
-            y="{{ stack.y_pos }}"
-            width="{{ bar_w }}"
-            height="{{ stack.height }}"
-            fill="{{ stack.category_color }}"
-            opacity="0.85"
-            style="cursor: pointer; transition: opacity 0.2s;">
-          </rect>
-        {% endfor %}
-
-        <!-- Income stacks (going up from 180) -->
-        {% for stack in day_stack.income_stacks %}
-          <rect
-            class="chart-bar"
-            data-category="{{ stack.category_name }}"
-            data-day="{{ day_stack.day }}"
-            data-amount="{{ stack.amount|format_amount }}"
-            data-type="income"
-            x="{{ x_pos + 1 }}"
-            y="{{ stack.y_pos }}"
-            width="{{ bar_w }}"
-            height="{{ stack.height }}"
-            fill="{{ stack.category_color }}"
-            opacity="0.85"
-            style="cursor: pointer; transition: opacity 0.2s;">
+      <!-- Bars for each day {{ chart_data.by_day.len() }} -->
+      {% for (i, date, day_stack) in chart_data.by_day|sorted_hashmap %}
+        {% let bar_x = left + bar_width * i as f64 %}
+        {% for day in day_stack %}
+          <rect class="chart-bar"
+            data-category="{{ day.group_name }}"
+            data-date="{{ date }}"
+            data-amount="{{ day.amount }}"
+            data-type="{{ day.transaction_type }}"
+            x="{{ bar_x }}"
+            width="{{ bar_width }}"
+            data-effect="renderChartBar(el, store, $max, $zeroLineRatio)"
+            fill="{{ chart_data.color(day.group_name) }}"
+            data-init
+            on:mouseenter="showChartTooltip(el)"
+            on:mouseleave="hideChartTooltip(el)"
+            on:mousemove="positionChartTooltip(evt, el)">
           </rect>
         {% endfor %}
       {% endfor %}
 
-      <!-- X-axis -->
-      <line x1="60" y1="340" x2="880" y2="340" stroke="currentColor" stroke-opacity="0.3" stroke-width="1"/>
+      <!-- Y-axis labels -->
+      <text class="y-axis-label" x="{{ left - 5.0 }}" y="{{ top }}"
+        data-effect="setAmount(el, $max.income)"/>
+      <text class="y-axis-label" x="{{ left - 5.0 }}"
+        data-bind="y:{{ top }}+{{ height * 0.5 }}*$zeroLineRatio"
+        data-effect="setAmount(el, $max.income * 0.5)"/>
+      <text class="y-axis-label" x="{{ left - 5.0 }}"
+        data-bind="y:{{ top }}+{{ height }}*$zeroLineRatio">0</text>
+      <text class="y-axis-label" x="{{ left - 5.0 }}"
+        data-bind="y:{{ top }}+{{ height }}*$zeroLineRatio+{{ height * 0.5 }}*(1-$zeroLineRatio)"
+        data-effect="setAmount(el, $max.expense * 0.5)"/>
+      <text class="y-axis-label" id="y-label-bottom" x="{{ left - 5.0 }}" y="{{ top + height }}"
+        data-effect="setAmount(el, $max.expense)"/>
 
       <!-- X-axis labels -->
-      <text x="86" y="360" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.7">1</text>
-      <text x="324" y="360" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.7">10</text>
-      <text x="562" y="360" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.7">20</text>
-      <text x="800" y="360" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.7">30</text>
-
-      <!-- Y-axis labels (income side) -->
-      <text x="50" y="25" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">{{ chart_data.max_income|format_amount }}</text>
-      <text x="50" y="105" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">{{ (chart_data.max_income * 0.5)|format_amount }}</text>
-      <text x="50" y="185" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">0</text>
-
-      <!-- Y-axis labels (expense side) -->
-      <text x="50" y="225" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">-{{ (chart_data.max_expenses * 0.5)|format_amount }}</text>
-      <text x="50" y="305" text-anchor="end" font-size="12" fill="currentColor" opacity="0.7">-{{ chart_data.max_expenses|format_amount }}</text>
-
-      <!-- Axis titles -->
-      <text x="470" y="390" text-anchor="middle" font-size="14" fill="currentColor" opacity="0.7">Day of Month</text>
-      <text x="15" y="180" text-anchor="middle" font-size="14" fill="currentColor" opacity="0.7" transform="rotate(-90, 15, 180)">Amount</text>
-    </svg>
-
-    <!-- Legend -->
-    <div id="chart_legend" style="display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; margin-top: 1rem;">
-      {% for (name, color) in chart_data.all_categories %}
-        <div class="legend-item" data-category="{{ name }}" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; transition: background-color 0.2s; cursor: pointer;">
-          <div style="width: 16px; height: 16px; background-color: {{ color }}; border-radius: 3px; opacity: 0.85;"></div>
-          <span style="font-size: 0.875rem;">{{ name }}</span>
-        </div>
+      {% for (i, date) in chart_data.x_labels() %}
+        <text class="x-axis-label"
+          x="{{ left + bar_width * i as f64 }}"
+          y="{{ top + height + 5.0 }}">{{ date|fmtdate("%m-%d") }}</text>
       {% endfor %}
-    </div>
+    </svg>
+  </div>
 
-    <style>
-      .legend-item:hover {
-        background-color: var(--pico-secondary-hover-background);
+  <!-- Legend -->
+  <div id="chart_legend" class="flex-wrap">
+    {% for (_, name, color) in chart_data.legends|sorted_hashmap %}
+    <label data-init
+      on:mouseenter="highlightTooltip(el, true)"
+      on:mouseleave="highlightTooltip(el, false)">
+      <input type="checkbox" name="data-category" value="{{ name }}" checked
+        style="--pico-background-color: {{ color }}"
+        data-init on:change="renderChart(el, store)">
+      {{ name }}
+    </label>
+    {% endfor %}
+  </div>
+
+  <div id="chart_tooltip" hidden>
+    <strong class="date"></strong>
+    <span class="category"></span>
+    <span class="amount"></span>
+  </div>
+</section>
+
+<style nonce="{{ ctx.nonce }}">
+  #chart {
+    padding: 1rem;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    height: auto;
+    display: block;
+
+    @media (min-width: 1200px) {
+      padding-right: 60px;
+    }
+
+    .chart-bar {
+      opacity: 0.8;
+
+      &.dimmed {
+        opacity: 0.3;
       }
+    }
 
-      .legend-item.highlighted {
-        background-color: var(--pico-secondary-hover-background);
-        font-weight: 600;
+    .chart-line {
+      stroke: currentColor;
+      stroke-width: 1px;
+      stroke-opacity: var(--stroke-opacity, 0.3);
+
+      &.y-axis {
+        --stroke-opacity: 0.5;
       }
+    }
 
-      .chart-bar.dimmed {
-        opacity: 0.3 !important;
-      }
-    </style>
+    .x-axis-label,
+    .y-axis-label {
+      font-size: 0.8em;
+      fill: currentColor;
+      opacity: 0.8;
+    }
 
-    <script nonce="{{ ctx.nonce }}">
-      (function() {
-        const tooltip = document.getElementById('chart_tooltip');
-        const svg = document.getElementById('chart_svg');
-        const bars = document.querySelectorAll('.chart-bar');
-        const legendItems = document.querySelectorAll('.legend-item');
+    .x-axis-label {
+      text-anchor: middle;
+      dominant-baseline: hanging;
+    }
 
-        // Bar hover handlers
-        bars.forEach(bar => {
-          bar.addEventListener('mouseenter', function(e) {
-            const category = this.dataset.category;
-            const day = this.dataset.day;
-            const amount = this.dataset.amount;
-            const type = this.dataset.type;
+    .y-axis-label {
+      text-anchor: end;
+      dominant-baseline: middle;
+    }
+  }
 
-            // Show tooltip
-            const typeLabel = type === 'income' ? 'Income' : 'Expense';
-            tooltip.innerHTML = `<strong>Day ${day}</strong><br>${category}<br>${typeLabel}: $${amount}`;
-            tooltip.style.display = 'block';
+  #chart_legend {
+    .legend-item.highlighted {
+      background-color: oklch(20% 0.00 90 / 10%);
+    }
+  }
 
-            // Dim other bars
-            bars.forEach(b => {
-              if (b.dataset.category !== category) {
-                b.classList.add('dimmed');
-              }
-            });
+  #chart_tooltip {
+    --transaction-type-opacity: 80%;
+    background: var(--pico-tooltip-background-color);
+    color: var(--pico-tooltip-color);
+    font-size: .875rem;
+    border: 1px solid var(--pico-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: .25rem .5rem;
+    white-space: nowrap;
+    opacity: 0.85;
+    z-index: 99;
+    position: absolute;
 
-            // Highlight legend
-            legendItems.forEach(item => {
-              if (item.dataset.category === category) {
-                item.classList.add('highlighted');
-              }
-            });
-          });
+    >* {
+      display: block;
+    }
+  }
+</style>
 
-          bar.addEventListener('mousemove', function(e) {
-            const rect = document.getElementById('chart_container').getBoundingClientRect();
-            tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
-            tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
-          });
+<script nonce="{{ ctx.nonce }}">
+  const chartEl = () => document.getElementById('chart')
+  const chartTooltipEl = () => document.getElementById('chart_tooltip')
+  const setAmount = (el, n) => el.textContent = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0}).format(n)
 
-          bar.addEventListener('mouseleave', function() {
-            tooltip.style.display = 'none';
-            bars.forEach(b => b.classList.remove('dimmed'));
-            legendItems.forEach(item => item.classList.remove('highlighted'));
-          });
-        });
+  function highlightTooltip(el, highlighted) {
+    const $i = el.querySelector('input')
+    if (!$i.checked) highlighted = false
 
-        // Legend hover handlers
-        legendItems.forEach(item => {
-          item.addEventListener('mouseenter', function() {
-            const category = this.dataset.category;
+    const $t = chartTooltipEl()
+    $t.classList.toggle('highlighted', highlighted)
 
-            // Highlight matching bars
-            bars.forEach(bar => {
-              if (bar.dataset.category !== category) {
-                bar.classList.add('dimmed');
-              }
-            });
+    for (const $bar of document.querySelectorAll('.chart-bar')) {
+      const category = $bar.dataset.category
+      $bar.classList.toggle('dimmed', highlighted && category != $i.value)
+      $bar.classList.toggle('highlighted', highlighted && category == $i.value)
+    }
+  }
 
-            this.classList.add('highlighted');
-          });
+  function hideChartTooltip(el) {
+    chartTooltipEl().setAttribute('hidden', 'hidden')
+  }
 
-          item.addEventListener('mouseleave', function() {
-            bars.forEach(bar => bar.classList.remove('dimmed'));
-            this.classList.remove('highlighted');
-          });
-        });
-      })();
-    </script>
-  {% endif %}
-</div>
+  function positionChartTooltip(evt, el) {
+    const $t = chartTooltipEl()
+    const w = $t.offsetWidth
+    const rect = document.getElementById('chart_container').getBoundingClientRect()
+    const offset = evt.clientX > window.innerWidth - w - 100 ? -(w + 5) : 5
+    $t.style.left = (evt.clientX - rect.left + offset) + 'px'
+    $t.style.top = (evt.clientY - rect.top + 5) + 'px'
+  }
+
+  function renderChart($el, store) {
+    const visibleSet = new Set(Array.from(document.querySelectorAll('#chart_legend input[type="checkbox"]:checked')).map(input => input.value))
+    const $bars = document.querySelectorAll('.chart-bar')
+    const max = {income: 0, expense: 0}
+
+    for (const $bar of $bars) {
+      const amount = parseFloat($bar.dataset.amount)
+      const isVisible = visibleSet.has($bar.dataset.category)
+      $bar.style.display = isVisible ? 'initial' : 'none'
+      if (!isVisible || amount === 0) continue
+      const type = $bar.dataset.type
+      max[type] = Math.max(max[type] ?? 0, amount)
+    }
+
+    store.max = max
+    store.zeroLineRatio = max.income / Math.max(max.income + max.expense, 0.1)
+  }
+
+  function renderChartBar($bar, store, max, r) {
+    if ($bar.style.display == 'none') return
+
+    const h = store.height
+    const type = $bar.dataset.type
+    const gridHeight = type == 'income' ? h * r : h * (1 - r);
+    const barHeight = parseFloat($bar.dataset.amount) / Math.max(max[type], 1) * gridHeight
+    $bar.setAttribute('height', Math.max(barHeight, 2))
+    $bar.setAttribute('y', store.top + (type == 'income' ? r * h - barHeight : r * h))
+  }
+
+  function showChartTooltip(el) {
+    const $t = chartTooltipEl()
+    const amount = parseFloat(el.dataset.amount)
+    $t.querySelector('.date').textContent = el.dataset.date
+    $t.querySelector('.category').textContent = el.dataset.category
+    $t.querySelector('.amount').textContent = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0}).format(amount)
+    $t.style.background = el.getAttribute('fill')
+    $t.removeAttribute('hidden')
+  }
+</script>

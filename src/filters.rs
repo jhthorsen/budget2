@@ -1,25 +1,26 @@
-pub fn days_in_month(date: &str) -> askama::Result<i64> {
-    let date = date.split("-").collect::<Vec<_>>();
+pub const PALETTE: [&str; 11] = [
+    "oklch(65% 0.20 250)", // Blue
+    "oklch(70% 0.19 145)", // Green
+    "oklch(75% 0.20 50)",  // Orange
+    "oklch(68% 0.20 320)", // Purple
+    "oklch(72% 0.18 180)", // Cyan
+    "oklch(70% 0.20 25)",  // Red-Orange
+    "oklch(65% 0.15 280)", // Indigo
+    "oklch(73% 0.17 85)",  // Yellow-Green
+    "oklch(68% 0.18 350)", // Magenta
+    "oklch(70% 0.16 200)", // Sky Blue
+    "oklch(60% 0.10 270)", // Other (muted purple-gray)
+];
 
-    if date.len() >= 2
-        && let (Ok(year), Ok(month)) = (date[0].parse::<i32>(), date[1].parse::<u32>())
-    {
-        Ok(chrono::NaiveDate::from_ymd_opt(year, month, 1)
-            .and_then(|d| {
-                if month == 12 {
-                    chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
-                } else {
-                    chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
-                }
-                .map(|next| (next - d).num_days())
-            })
-            .unwrap_or(30))
-    } else {
-        Ok(30)
-    }
+#[askama::filter_fn]
+pub fn fmtdate(date: &str, _env: &dyn askama::Values, format: &str) -> askama::Result<String> {
+    let date = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .map_err(|err| askama::Error::Custom(Box::new(err)))?;
+    Ok(date.format(format).to_string())
 }
 
-pub fn extract_month(value: &str) -> askama::Result<String> {
+#[askama::filter_fn]
+pub fn extract_month(value: &str, _env: &dyn askama::Values) -> askama::Result<String> {
     let parts = value.split("-").collect::<Vec<_>>();
     if parts.len() == 3 {
         Ok(format!(
@@ -32,7 +33,8 @@ pub fn extract_month(value: &str) -> askama::Result<String> {
     }
 }
 
-pub fn format_amount(value: &f64) -> askama::Result<String> {
+#[askama::filter_fn]
+pub fn format_amount(value: &f64, _env: &dyn askama::Values) -> askama::Result<String> {
     // Handle negative values
     let is_negative = *value < 0.0;
     let abs_value = value.abs();
@@ -41,7 +43,6 @@ pub fn format_amount(value: &f64) -> askama::Result<String> {
     let formatted = format!("{:.2}", abs_value);
     let parts: Vec<&str> = formatted.split('.').collect();
     let integer_part = parts[0];
-    let decimal_part = parts.get(1).unwrap_or(&"00");
 
     // Add thousand separators (dots)
     let chars: Vec<char> = integer_part.chars().collect();
@@ -51,17 +52,29 @@ pub fn format_amount(value: &f64) -> askama::Result<String> {
     for (i, ch) in chars.iter().enumerate() {
         result.push(*ch);
         let remaining = len - i - 1;
-        if remaining > 0 && remaining % 3 == 0 {
+        if remaining > 0 && remaining.is_multiple_of(3) {
             result.push(',');
         }
     }
 
-    // Format with comma as decimal separator (European style)
-    let final_result = format!("{}.{}", result, decimal_part);
-
     if is_negative {
-        Ok(format!("-{}", final_result))
+        Ok(format!("-{result}"))
     } else {
-        Ok(final_result)
+        Ok(result)
     }
+}
+
+#[askama::filter_fn]
+pub fn sorted_hashmap<T: Clone>(
+    map: &std::collections::HashMap<String, T>,
+    _env: &dyn askama::Values,
+) -> askama::Result<Vec<(usize, String, T)>> {
+    let mut keys: Vec<String> = map.keys().cloned().collect();
+    keys.sort();
+
+    Ok(keys
+        .into_iter()
+        .enumerate()
+        .map(|(i, key)| (i, key.clone(), map[&key].clone()))
+        .collect())
 }

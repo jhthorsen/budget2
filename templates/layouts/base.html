@@ -12,8 +12,8 @@
     <style>
       :root {
         --pico-font-size: 16px;
-        --income-color: oklch(60% 0.14 145 / 100%);
-        --expense-color: oklch(70% 0.2 20 / 100%);
+        --income-color: oklch(60% 0.14 145 / var(--transaction-type-opacity, 100%));
+        --expense-color: oklch(70% 0.2 20 / var(--transaction-type-opacity, 100%));
       }
 
       main > article {
@@ -34,27 +34,11 @@
         }
       }
 
-      .stat-card {
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: var(--card-shadow);
-        transition: transform 0.2s, box-shadow 0.2s;
-        text-align: center;
-        background: var(--card-background-color);
-      }
-
-      .stat-value {
-        font-size: 2rem;
-        font-weight: 700;
-        margin: 0.5rem 0;
-      }
-
-      .stat-label {
-        font-size: 0.875rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        opacity: 0.7;
-        margin: 0;
+      .flex-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--pico-grid-column-gap) var(--pico-grid-row-gap);
+        justify-content: center;
       }
 
       .income {
