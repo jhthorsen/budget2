@@ -196,9 +196,20 @@
         if (e != a.name) listen($n, $n, e, fn('on', $n, a.value))
       }
 
-      // Two way binding
+      // One or two way binding
       // TODO: Not very well tested for all cases of inputs
-      if ($n.dataset.bind) {
+      if ($n.dataset.bind && $n.dataset.bind.match(/\w:/)) {
+        try {
+          const cb = new Function('s', 'return {' + $n.dataset.bind.replace(/\$(\w+)\b/g, (_a, k) => `s['${k}']`) + '}')
+          listen($n, $n, 'ssr:render', () => {
+              for (const [k, v] of Object.entries(cb(s))) {
+                v == undefined ? $n.removeAttribute(k) : $n.setAttribute(k, v)
+              }
+          })
+        } catch (err) {
+          console.error(err, $n, $n.dataset.bind.replace(/\$(\w+)\b/g, (_a, k) => s[k]))
+        }
+      } else if ($n.dataset.bind) {
         const [_, k, i] = $n.dataset.bind.match(/(\w+)\[(\d+)\]/) ||
           $n.dataset.bind.match(/(\w+)/) || []
         const n = $n.type == 'number' || $n.dataset.type == 'number'
@@ -212,7 +223,7 @@
             s._D.render(k)
           })
           listen($n, $n, 'ssr:render', () => {
-            $n.checked = byVal ? $n.value == r() : r()
+            byVal ? ($n.value == r()) : ($n.checked = r())
           })
           w(byVal ? $n.value : $n.checked)
         } else {
