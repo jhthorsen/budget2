@@ -332,7 +332,7 @@
     if (evt.defaultPrevented) return
     if ($n.action == 'get') history.pushState({}, null, $n.action)
 
-    const r = {method: $n.method}
+    const r = {method: $n.method || 'get'}
     const b = new FormData($n)
     if (r.method.toLowerCase() == 'post') {
       const c = 'application/x-www-form-urlencoded'
@@ -348,6 +348,8 @@
     if ($s) $s.ariaBusy = 'true'
     evt.preventDefault()
     fetch($d.body, $n.action, r).finally(() => {
+      const action = $n.action.replace(/\/$/, '')
+      if (r.method == 'get') history.pushState({}, null, `${action}/${r.search}`)
       $n.ariaBusy = 'false'
       if ($s) $s.ariaBusy = 'false'
     })
