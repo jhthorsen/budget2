@@ -1,70 +1,56 @@
-{% extends "layouts/base.html" %}
-{% block title %}Import Results - Budget App{% endblock %}
-
-{% block content %}
-<article>
-  <header>
-    <h1>Import Results</h1>
+<dialog id="dialog" open>
+  <article>
     <header>
-      {% if result.failed == 0 %}
-        <strong style="color: green;">✓ Import Completed Successfully</strong>
+      <button form="dialog" aria-label="Close" rel="prev"></button>
+      <h1>Import Results</h1>
+      {% if result.errors.len() == 0 %}
+        <p><strong style="color: green;">✓ Import Completed Successfully</strong></p>
       {% else %}
-        <strong style="color: orange;">⚠ Import Completed with Errors</strong>
+        <p><strong style="color: orange;">⚠ Import Completed with Errors</strong></p>
       {% endif %}
-  </header>
+    </header>
 
-  <section>
-    <div class="grid">
-      <div>
-        <h6>Total Rows</h6>
-        <p style="font-size: 1.5em;">{{ result.total_rows }}</p>
-      </div>
-      <div>
-        <h6>Successfully Imported</h6>
-        <p style="color: green; font-size: 1.5em;">{{ result.successful }}</p>
-      </div>
-      <div>
-        <h6>Skipped (Duplicates)</h6>
-        <p style="{% if result.skipped > 0 %}color: orange;{% endif %} font-size: 1.5em;">{{ result.skipped }}</p>
-      </div>
-      <div>
-        <h6>Failed</h6>
-        <p style="{% if result.failed > 0 %}color: red;{% endif %} font-size: 1.5em;">{{ result.failed }}</p>
-      </div>
-    </div>
-  </section>
+    <table>
+      <thead>
+        <th>Rows</th>
+        <th>Success</th>
+        <th>Failed</th>
+      </thead>
+      <tbody>
+        <td>{{ result.total_rows }}</td>
+        <td>{{ result.successful }}</td>
+        <td>{{ result.errors.len() }}</td>
+      </tbody>
+    </table>
 
-  {% if !result.errors.is_empty() %}
-    <section>
+    {% if !result.errors.is_empty() %}
       <h2>Import Errors</h2>
       <p>The following rows could not be imported:</p>
-
       <figure>
         <table>
           <thead>
             <tr>
-              <th>Row #</th>
-              <th>Error</th>
-              <th>Row Data</th>
+              <th class="nowrap">Row #</th>
+              <th class="nowrap">Error</th>
+              <th class="nowrap">Row Data</th>
             </tr>
           </thead>
           <tbody>
             {% for error in result.errors %}
-            <tr>
-              <td>{{ error.row_number }}</td>
-              <td style="color: red;">{{ error.error }}</td>
-              <td><small>{{ error.row_data }}</small></td>
-            </tr>
+              <tr>
+                <td>{{ error.row_number }}</td>
+                <td>{{ error.error }}</td>
+                <td>{{ error.row_data }}</td>
+              </tr>
             {% endfor %}
           </tbody>
         </table>
       </figure>
-    </section>
-  {% endif %}
+    {% endif %}
 
-  <footer class="grid">
-    <a href="/dashboard" role="button">Back to Dashboard</a>
-    <a href="/import" role="button" class="secondary">Import Another File</a>
-  </footer>
-</article>
-{% endblock %}
+    <footer>
+      <a href="/dashboard" role="button">Close</a>
+      <a href="/import" role="button" class="secondary">Import another</a>
+    </footer>
+  </article>
+</dialog>

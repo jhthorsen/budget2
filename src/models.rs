@@ -50,21 +50,24 @@ impl AccountWithOwnership {
         pool: &sqlx::Pool<sqlx::Sqlite>,
         account_name: &str,
     ) -> Result<i64, sqlx::Error> {
-        Ok(sqlx::query_scalar!(
+        let existing = sqlx::query_scalar!(
             "select id as 'id!' from accounts where name = ?",
             account_name
         )
         .fetch_optional(pool)
+        .await?;
+
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+
+        Ok(sqlx::query!(
+            "insert into accounts (name, description) values (?, '')",
+            account_name,
+        )
+        .execute(pool)
         .await?
-        .unwrap_or(
-            sqlx::query!(
-                "insert into accounts (name, description) values (?, '')",
-                account_name,
-            )
-            .execute(pool)
-            .await?
-            .last_insert_rowid(),
-        ))
+        .last_insert_rowid())
     }
 
     pub async fn accounts_for_user(
@@ -212,22 +215,6 @@ pub struct DayData {
     pub group_id: i64,
     pub group_name: String,
     pub transaction_type: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ImportError {
-    pub row_number: usize,
-    pub row_data: String,
-    pub error: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ImportResult {
-    pub total_rows: usize,
-    pub successful: usize,
-    pub failed: usize,
-    pub skipped: usize,
-    pub errors: Vec<ImportError>,
 }
 
 #[derive(Debug, Deserialize)]

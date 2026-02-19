@@ -1,31 +1,33 @@
-{% extends "layouts/base.html" %}
+<dialog id="dialog" open>
+  <article>
+    <header>
+      <button form="dialog" aria-label="Close" rel="prev"></button>
+      <h2>Import Transactions from CSV</h2>
+    </header>
 
-{% block title %}Import CSV - Budget App{% endblock %}
+    <p>
+      Upload a CSV file containing your transactions.
+      After uploading, you'll be able to map the columns to the appropriate fields.
+    </p>
 
-{% block content %}
-<article>
-  <header>
-    <h1>Import Transactions from CSV</h1>
-  </header>
+    <form id="import_form" action="/import/upload" method="post" enctype="multipart/form-data">
+      <label>
+        <input type="file" name="csv_file" accept=".csv" required>
+      </label>
+    </form>
 
-  <p>Upload a CSV file containing your transactions. After uploading, you'll be able to map the columns to the appropriate fields.</p>
+    <h2>CSV Format Guidelines</h2>
+    <ul>
+      <li>The CSV file must have a header row with column names</li>
+      <li>Date format must be either <code>YYYY-MM-DD</code> or <code>YYYY/MM/DD</code></li>
+      <li>Amount should be numeric (commas and dollar signs will be removed automatically)</li>
+      <li>You can optionally include account and category columns</li>
+      <li>Categories will be automatically created if they don't exist</li>
+    </ul>
 
-  <form action="/import/upload" method="post" enctype="multipart/form-data">
-    <label>
-      Select CSV File
-      <input type="file" name="csv_file" accept=".csv" required>
-    </label>
-    <button type="submit">Upload and Continue</button>
-  </form>
-
-  <h2>CSV Format Guidelines</h2>
-  <ul>
-    <li>The CSV file must have a header row with column names</li>
-    <li>Date format must be either <code>YYYY-MM-DD</code> or <code>YYYY/MM/DD</code></li>
-    <li>Transaction type must be either <code>income</code> or <code>expense</code></li>
-    <li>Amount should be numeric (commas and dollar signs will be removed automatically)</li>
-    <li>You can optionally include account and category columns</li>
-    <li><strong>Categories will be automatically created if they don't exist</strong></li>
-  </ul>
-</article>
-{% endblock %}
+    <footer>
+      <button form="dialog" class="secondary">Cancel</button>
+      <button form="import_form">Start import</button>
+    </footer>
+  </article>
+</dialog>

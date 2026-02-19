@@ -1,5 +1,4 @@
-use crate::AppState;
-use crate::{models::*, request_context::RequestContext};
+use crate::{AppState, models::*};
 use askama::Template;
 use axum::response::IntoResponse;
 use axum::{Form, extract::State};
@@ -9,14 +8,11 @@ use axum::{Form, extract::State};
 struct AddTransactionTemplate {
     accounts: Vec<AccountWithOwnership>,
     categories: Vec<Category>,
-    ctx: RequestContext,
-    user: User,
 }
 
 pub async fn add_transaction_page(
     State(state): State<crate::AppState>,
     session: tower_sessions::Session,
-    ctx: RequestContext,
 ) -> crate::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
 
@@ -27,8 +23,6 @@ pub async fn add_transaction_page(
         categories: Category::categories_for_user(&state.pool, user.id)
             .await
             .map_err(|err| super::db_error(err, "Unable to fetch categories"))?,
-        ctx,
-        user,
     };
 
     Ok(template

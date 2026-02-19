@@ -22,8 +22,28 @@
         --pico-card-border-color: transparent;
       }
 
+      article {
+        footer,
+        header {
+          padding: var(--pico-block-spacing-vertical) var(--pico-block-spacing-horizontal);
+        }
+      }
+
+      dialog {
+        > article {
+          border-radius: 1rem;
+        }
+
+        header button[rel="prev"] {
+          position: relative;
+          top: 0.4em;
+        }
+      }
+
       td,
       th {
+        background: transparent;
+
         input:not([type=checkbox],[type=radio]),
         select,
         textarea {
@@ -60,6 +80,7 @@
       }
     </style>
   {% endif %}
+</style>
 </head>
 <body>
   <nav class="container-fluid">
@@ -69,7 +90,8 @@
     <ul>
       {% block nav_items %}
         <li><a href="/dashboard">Dashboard</a></li>
-        <li><a href="/add">Add</a></li>
+        <li><a href="/add" target="partial">Add</a></li>
+        <li><a href="/import" target="partial">Import</a></li>
         <li>
           <a href="/settings">
             {% match user.name.split(" ").next() %}
@@ -87,6 +109,8 @@
   <main class="container-fluid">
       {% block content %}{% endblock %}
   </main>
+
+  <dialog id="dialog"></dialog>
 
   {% if ctx.csr == false %}
     <script nonce="{{ ctx.nonce }}" src="/static/idiomorph@1.js"></script>

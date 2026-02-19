@@ -1,11 +1,10 @@
-use crate::{AppState, models::*, request_context::RequestContext};
+use crate::{AppState, models::*};
 use askama::Template;
 use axum::extract::{Multipart, State};
 use axum::{Form, response::IntoResponse};
 use csv::{ReaderBuilder, StringRecord};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
 
 const CSV_SESSION_KEY: &str = "csv_upload";
@@ -14,13 +13,13 @@ const CSV_SESSION_KEY: &str = "csv_upload";
 pub struct ColumnMapping {
     pub file_id: String,
     pub date_column: String,
-    pub amount_column: String,
-    pub amount_multiplier: Option<String>,
+    pub income_column: String,
+    pub expense_column: String,
     pub description_column: String,
-    pub transaction_type: String,
     pub account_column: Option<String>,
-    pub account_fixed_value: Option<String>,
+    pub account_fixed_name: Option<String>,
     pub category_column: Option<String>,
+    pub currency_multiplier: Option<String>,
     #[serde(default)]
     header_map: HashMap<String, usize>,
 }
@@ -69,35 +68,40 @@ impl ColumnMapping {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct ImportError {
+    pub row_number: usize,
+    pub row_data: String,
+    pub error: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportResult {
+    pub total_rows: usize,
+    pub successful: usize,
+    pub errors: Vec<ImportError>,
+}
+
 #[derive(Template)]
 #[template(path = "csv_imported.html")]
 struct CsvImportedTemplate {
-    ctx: RequestContext,
     result: ImportResult,
-    user: User,
 }
 
 #[derive(Template)]
 #[template(path = "csv_mapping.html")]
 struct CsvMappingTemplate {
-    categories: Vec<Category>,
-    ctx: RequestContext,
     file_id: String,
     headers: Vec<String>,
-    user: User,
 }
 
 #[derive(Template)]
 #[template(path = "csv_upload.html")]
-struct CsvUploadTemplate {
-    ctx: RequestContext,
-    user: User,
-}
+struct CsvUploadTemplate {}
 
 pub async fn csv_import_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    ctx: RequestContext,
     Form(mapping): Form<ColumnMapping>,
 ) -> crate::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
@@ -114,14 +118,14 @@ pub async fn csv_import_handler(
     let file_path = PathBuf::from(&csv_session.file_path);
     let result = import_csv_file(&state, &user, &file_path, mapping).await;
 
-    fs::remove_file(&file_path).ok();
+    std::fs::remove_file(&file_path).ok();
     session
         .remove::<CsvUploadSession>(CSV_SESSION_KEY)
         .await
         .ok();
 
     let result = result.map_err(|err| super::render_error(&err, &err))?;
-    let template = CsvImportedTemplate { ctx, result, user };
+    let template = CsvImportedTemplate { result };
 
     Ok(template
         .render()
@@ -133,7 +137,6 @@ pub async fn csv_import_handler(
 pub async fn csv_upload_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    ctx: RequestContext,
     mut multipart: Multipart,
 ) -> crate::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
@@ -162,11 +165,11 @@ pub async fn csv_upload_handler(
             .await
             .map_err(|err| super::render_error(&err.to_string(), "Failed to read file data"))?;
 
-        fs::write(&file_path, &data)
+        std::fs::write(&file_path, &data)
             .map_err(|err| super::render_error(&err.to_string(), "Failed to save file"))?;
 
         let headers = read_csv_headers(&file_path).map_err(|err| {
-            fs::remove_file(&file_path).ok();
+            std::fs::remove_file(&file_path).ok();
             super::render_error(&err.to_string(), "Failed to read CSV headers")
         })?;
 
@@ -181,16 +184,9 @@ pub async fn csv_upload_handler(
             .await
             .map_err(|err| super::render_error(&err.to_string(), "Failed to insert session"))?;
 
-        let categories = Category::categories_for_user(&state.pool, user.id)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to fetch categories"))?;
-
         let template = CsvMappingTemplate {
-            ctx,
-            user,
             file_id: file_id.clone(),
             headers,
-            categories,
         };
 
         return Ok(template
@@ -206,10 +202,9 @@ pub async fn csv_upload_handler(
 pub async fn csv_upload_page(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    ctx: RequestContext,
 ) -> crate::HttpResult {
-    let user = auth::get_current_user(&state.pool, &session).await?;
-    let template = CsvUploadTemplate { ctx, user };
+    let _user = auth::get_current_user(&state.pool, &session).await?;
+    let template = CsvUploadTemplate {};
 
     Ok(template
         .render()
@@ -251,7 +246,6 @@ async fn import_csv_file(
 
     let mut total_rows = 0;
     let mut successful = 0;
-    let mut skipped = 0;
     let mut errors = Vec::new();
 
     for (row_idx, result) in reader.records().enumerate() {
@@ -263,8 +257,6 @@ async fn import_csv_file(
                 Ok(imported) => {
                     if imported {
                         successful += 1;
-                    } else {
-                        skipped += 1;
                     }
                 }
                 Err(e) => {
@@ -288,8 +280,6 @@ async fn import_csv_file(
     Ok(ImportResult {
         total_rows,
         successful,
-        failed: errors.len(),
-        skipped,
         errors,
     })
 }
@@ -307,31 +297,19 @@ async fn import_row(
         account: None,
         category_id: None,
         amount: 0.0,
-        original_amount: normalize_amount(mapping.value(record, Some(&mapping.amount_column))?)?,
+        original_amount: 0.0,
         description: mapping
             .value(record, Some(&mapping.description_column))?
             .to_string(),
         transaction_date: normalize_date(mapping.value(record, Some(&mapping.date_column))?)?,
-        transaction_type: mapping.transaction_type.to_lowercase().trim().to_string(),
-    };
-
-    t.amount = t.original_amount
-        * mapping
-            .amount_multiplier
-            .as_ref()
-            .and_then(|m| m.parse::<f64>().ok())
-            .unwrap_or(1.0);
-
-    t.transaction_type = match t.transaction_type.as_str() {
-        "income" if t.original_amount < 0.0 => "expense".into(),
-        "expense" if t.original_amount < 0.0 => "income".into(),
-        other => return Err(format!("Unexpected transaction_type {other}")),
+        transaction_type: "".to_string(),
     };
 
     let account_name = mapping
         .non_empty_value(record, mapping.account_column.as_deref())
         .map(|v| Some(v.to_string()))
-        .unwrap_or(mapping.account_fixed_value.clone());
+        .unwrap_or(mapping.account_fixed_name.clone());
+
     if let Some(account_name) = &account_name {
         t.account_id = Some(
             AccountWithOwnership::ensure(&state.pool, account_name)
@@ -359,11 +337,48 @@ async fn import_row(
         }
     }
 
-    t.create_or_update(&state.pool)
-        .await
-        .map_err(|e| format!("Database error inserting transaction: {}", e))?;
+    let currency_multiplier = mapping
+        .currency_multiplier
+        .as_ref()
+        .and_then(|m| m.parse::<f64>().ok())
+        .unwrap_or(1.0);
 
-    Ok(true) // Successfully imported
+    let mut imported = 0;
+    if let Ok(amount) = mapping.value(record, Some(&mapping.income_column))
+        && let Ok(amount) = normalize_amount(amount)
+    {
+        t.original_amount = amount;
+        t.amount = (amount * currency_multiplier).abs();
+        t.transaction_type = if amount > 0.0 {
+            "income".to_string()
+        } else {
+            "expense".to_string()
+        };
+
+        t.create_or_update(&state.pool)
+            .await
+            .map_err(|e| format!("Database error inserting transaction: {}", e))?;
+        imported += 1;
+    }
+
+    if let Ok(amount) = mapping.value(record, Some(&mapping.expense_column))
+        && let Ok(amount) = normalize_amount(amount)
+    {
+        t.original_amount = amount;
+        t.amount = (amount * currency_multiplier).abs();
+        t.transaction_type = if amount > 0.0 {
+            "expense".to_string()
+        } else {
+            "income".to_string()
+        };
+
+        t.create_or_update(&state.pool)
+            .await
+            .map_err(|e| format!("Database error inserting transaction: {}", e))?;
+        imported += 1;
+    }
+
+    Ok(imported > 0)
 }
 
 fn normalize_amount(num: &str) -> Result<f64, String> {

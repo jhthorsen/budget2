@@ -1,125 +1,110 @@
-{% extends "layouts/base.html" %}
+<dialog id="dialog" open>
+  <article>
+    <header>
+      <button form="dialog" aria-label="Close" rel="prev"></button>
+      <h1>Map CSV columns</h1>
+    </header>
 
-{% block title %}Map CSV Columns - Budget App{% endblock %}
+    <p>
+      Map the CSV columns to the transaction fields.
+      Select which column in your CSV corresponds to each field.
+      <br>
+      You must select either an expense or income column.
+    </p>
 
-{% block content %}
-<article>
-  <header>
-    <h1>Map CSV Columns</h1>
-  </header>
+    <form id="import_form" action="/import/process" method="post">
+      <input type="hidden" name="file_id" value="{{ file_id }}">
 
-  <p>Map the CSV columns to the transaction fields. Select which column in your CSV corresponds to each field.</p>
+      <table>
+        <tbody>
+          <tr>
+            <td>Date column<br><small>Format: YYYY-MM-DD or YYYY/MM/DD.</small></td>
+            <td>
+              <select name="date_column">
+                {% for header in headers %}
+                  <option value="{{ header }}">{{ header }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <td>Expense column<br><small>Positive numbers will be tracked as expense and negative will be tracked as income.</small></td>
+            <td>
+              <select name="expense_column">
+                <option value="">-- None --</option>
+                {% for header in headers %}
+                  <option value="{{ header }}">{{ header }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <td>Income column<br><small>Positive numbers will be tracked as income and negative will be tracked as expense.</small></td>
+            <td>
+              <select name="income_column">
+                <option value="">-- None --</option>
+                {% for header in headers %}
+                  <option value="{{ header }}">{{ header }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <td>Description column</td>
+            <td>
+              <select name="description_column">
+                {% for header in headers %}
+                  <option value="{{ header }}">{{ header }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <td>Account column<br><small>New accounts will be automatically created.</small></td>
+            <td>
+              <select name="account_column">
+                <option value="">-- Automatic --</option>
+                {% for header in headers %}
+                  <option value="{{ header }}">{{ header }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <td>Account name<br><small>Use this value, instead of account names from import rules.</small></td>
+            <td>
+              <input type="text" name="account_fixed_name" placeholder="e.g., Checking, Savings">
+            </td>
+          </tr>
+          <tr>
+            <td>Category column<br><small>New categories will be automatically created.</small></td>
+            <td>
+              <select name="category_column">
+                <option value="">-- Automatic --</option>
+                {% for header in headers %}
+                  <option value="{{ header }}">{{ header }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <td>Currency multiplier<br><small>Multiply all amounts by this value (e.g., use -1 to invert signs, 0.01 for cents to dollars)</small></td>
+            <td>
+              <input type="number" name="currency_multiplier" step="0.01" min="0" value="1" placeholder="1.0" required>
+            </td>
+          </tr>
+        </table>
+      </tbody>
+    </form>
 
-  <form action="/import/process" method="post" onsubmit="return validateForm(event)">
-    <input type="hidden" name="file_id" value="{{ file_id }}">
+    <p>
+      <a href="/rules" target="_blank">Import rules</a> will be applied,
+      if category or account columns are not mapped.
+    </p>
 
-    <label>
-      Date Column <span style="color: red;">*</span>
-      <select name="date_column" required>
-        <option value="">-- Select Column --</option>
-        {% for header in headers %}
-        <option value="{{ header }}">{{ header }}</option>
-        {% endfor %}
-      </select>
-      <small>Format: YYYY-MM-DD or YYYY/MM/DD</small>
-    </label>
-
-    <label>
-      Amount Column <span style="color: red;">*</span>
-      <select name="amount_column" required>
-        <option value="">-- Select Column --</option>
-        {% for header in headers %}
-        <option value="{{ header }}">{{ header }}</option>
-        {% endfor %}
-      </select>
-      <small>Numeric value ($ and commas will be removed)</small>
-    </label>
-
-    <label>
-      Amount Multiplier (optional)
-      <input type="number" name="amount_multiplier" step="0.01" value="1" placeholder="1.0">
-      <small>Multiply all amounts by this value (e.g., use -1 to invert signs, 0.01 for cents to dollars)</small>
-    </label>
-
-    <label>
-      Description Column <span style="color: red;">*</span>
-      <select name="description_column" required>
-        <option value="">-- Select Column --</option>
-        {% for header in headers %}
-        <option value="{{ header }}">{{ header }}</option>
-        {% endfor %}
-      </select>
-    </label>
-
-    <label>
-      Transaction Type <span style="color: red;">*</span>
-      <select name="transaction_type" id="transaction_type" required>
-        <option value="">-- Select Type --</option>
-        <option value="income">Income</option>
-        <option value="expense">Expense</option>
-      </select>
-      <small>Negative amounts will be treated as the opposite type (e.g., if Income is selected, negative amounts become Expenses)</small>
-    </label>
-
-    <fieldset>
-      <legend>Account (optional)</legend>
-      <label>
-        Account Column (from CSV)
-        <select name="account_column" id="account_column">
-          <option value="">-- None (use fixed value below) --</option>
-          {% for header in headers %}
-          <option value="{{ header }}">{{ header }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>
-        OR Fixed Account Value
-        <input type="text" name="account_fixed_value" id="account_fixed_value" placeholder="e.g., Checking, Savings">
-        <small>Use this if all transactions are from the same account</small>
-      </label>
-    </fieldset>
-
-    <label>
-      Category Column (optional)
-      <select name="category_column">
-        <option value="">-- None --</option>
-        {% for header in headers %}
-        <option value="{{ header }}">{{ header }}</option>
-        {% endfor %}
-      </select>
-      <small>Categories will be automatically created if they don't exist</small>
-    </label>
-
-    {% if !categories.is_empty() %}
-    <details>
-      <summary>Your Existing Categories</summary>
-      <ul>
-        {% for category in categories %}
-        <li>{{ category.name }}</li>
-        {% endfor %}
-      </ul>
-      <small><em>New categories from your CSV will be added to this list</em></small>
-    </details>
-    {% endif %}
-
-    <div class="grid">
-      <button type="submit">Import Transactions</button>
-      <a href="/import" role="button" class="secondary">Cancel</a>
-    </div>
-  </form>
-</article>
-
-<script nonce="{{ ctx.nonce }}">
-  function validateForm(event) {
-    const typeFixed = document.getElementById('transaction_type').value
-
-    if (!typeFixed) {
-      event.preventDefault()
-      alert('Please select a Transaction Type')
-      return false
-    }
-
-    return true
-  }
-</script>
-{% endblock %}
+    <footer>
+      <button form="dialog" class="secondary">Cancel</button>
+      <button form="import_form">Import transaction</button>
+    </footer>
+  </article>
+</dialog>

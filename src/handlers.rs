@@ -4,7 +4,7 @@ use axum::response::IntoResponse;
 pub mod accounts;
 pub mod auth;
 pub mod categories;
-pub mod csv;
+pub mod import;
 pub mod dashboard;
 pub mod rules;
 pub mod settings;

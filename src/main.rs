@@ -90,9 +90,9 @@ async fn main() {
             post(handlers::categories::create_category_handler),
         )
         .route("/dashboard", get(handlers::dashboard::dashboard_handler))
-        .route("/import", get(handlers::csv::csv_upload_page))
-        .route("/import/process", post(handlers::csv::csv_import_handler))
-        .route("/import/upload", post(handlers::csv::csv_upload_handler))
+        .route("/import", get(handlers::import::csv_upload_page))
+        .route("/import/process", post(handlers::import::csv_import_handler))
+        .route("/import/upload", post(handlers::import::csv_upload_handler))
         .route("/rules", get(handlers::rules::rules_list))
         .route("/rules/:id/apply", post(handlers::rules::apply_rule_to_transactions))
         .route("/rules/:id/delete", post(handlers::rules::rules_delete))
