@@ -316,14 +316,14 @@
     if (evt.target?.closest('button, input, select, textarea')) return
 
     const $n = evt.target?.closest('[href]')
-    if (!$n || $n.target == '_top') return
+    if (!$n || $n.target == '_top' || $n.target == '_blank') return
     if ($n.target == 'preventDefault') evt.preventDefault()
     if (evt.defaultPrevented) return
 
     const url = new URL($n.href || $n.getAttribute('href'), location.href)
     if (url.origin !== location.origin) return // external link
 
-    if (location.pathname !== url.pathname || location.search !== url.search) {
+    if ($n.target != 'partial' && (location.pathname !== url.pathname || location.search !== url.search)) {
       history.pushState({}, null, url.pathname + url.search)
     }
 
