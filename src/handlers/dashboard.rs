@@ -11,48 +11,24 @@ const PER_PAGE: i64 = 100;
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
     ctx: RequestContext,
-    accounts: Vec<AccountWithOwnership>,
+    accounts: Vec<Account>,
     categories: Vec<Category>,
     chart_data: ChartData,
-    filters: TransactionFilters,
+    filters: TransactionQuery,
     more_transactions: bool,
-    transactions: Vec<TransactionWithCategory>,
+    transactions: Vec<Transaction>,
     user: User,
-}
-
-#[derive(Template)]
-#[template(path = "dashboard/search_results.html")]
-struct DashboardSearchResultsTemplate {
-    ctx: RequestContext,
-    chart_data: ChartData,
-    filters: TransactionFilters,
-    more_transactions: bool,
-    transactions: Vec<TransactionWithCategory>,
 }
 
 pub async fn dashboard_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    Query(filters): Query<TransactionFilters>,
+    Query(mut filters): Query<TransactionQuery>,
     ctx: RequestContext,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
-
-    let mut transaction = Transaction {
-        account_id: Some(filters.account_id),
-        category_id: Some(filters.category_id),
-        description: filters.search.trim().to_owned(),
-        transaction_type: filters.transaction_type.trim().to_owned(),
-        transaction_date: filters.month.trim().to_owned(),
-        user_id: user.id,
-        ..Transaction::default()
-    };
-
     let offset = (filters.page.max(1) - 1) * PER_PAGE;
-    let mut transactions = transaction
-        .transactions_with_category(&state.pool, offset, PER_PAGE + 1)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch transactions"))?;
+    let mut transactions = Transaction::search(&state.pool, &filters, offset, PER_PAGE + 1).await?;
 
     let more_transactions = if transactions.len() as i64 > PER_PAGE {
         transactions.pop();
@@ -61,26 +37,18 @@ pub async fn dashboard_handler(
         false
     };
 
-    let accounts = AccountWithOwnership::accounts_for_user(&state.pool, user.id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch accounts"))?;
+    let accounts = Account::all(&state.pool).await?;
+    let categories = Category::all(&state.pool).await?;
 
-    let categories = Category::categories_for_user(&state.pool, user.id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch categories"))?;
-
-    if transaction.transaction_date.is_empty() {
-        transaction.transaction_date = match transactions.first() {
-            Some(t) => t.transaction_date.chars().take(4).collect(),
+    if filters.processed_at.is_empty() {
+        filters.processed_at = match transactions.first() {
+            Some(t) => t.processed_at.chars().take(4).collect(),
             None => "1900".to_string(),
         };
     }
 
-    let chart_data = fetch_chart_data(&state.pool, &transaction)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch chart data"))?;
-
-    let rendered = if filters.filtered {
+    let chart_data = fetch_chart_data(&state.pool, &filters).await?;
+    let html = if filters.filtered {
         let template = DashboardSearchResultsTemplate {
             ctx,
             chart_data,
@@ -89,7 +57,7 @@ pub async fn dashboard_handler(
             transactions,
         };
 
-        template.render()
+        template.render()?
     } else {
         let template = DashboardTemplate {
             ctx,
@@ -102,24 +70,31 @@ pub async fn dashboard_handler(
             user,
         };
 
-        template.render()
+        template.render()?
     };
 
-    Ok(rendered
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
+    Ok(axum::response::Html(html).into_response())
+}
+
+#[derive(Template)]
+#[template(path = "dashboard/search_results.html")]
+struct DashboardSearchResultsTemplate {
+    ctx: RequestContext,
+    chart_data: ChartData,
+    filters: TransactionQuery,
+    more_transactions: bool,
+    transactions: Vec<Transaction>,
 }
 
 async fn fetch_chart_data(
     pool: &SqlitePool,
-    transaction: &Transaction,
+    filters: &TransactionQuery,
 ) -> Result<ChartData, sqlx::Error> {
-    let group_by_account = transaction.category_id.unwrap_or_default() > 0;
+    let group_by_account = filters.category_id > 0;
     let chart_data = if group_by_account {
-        transaction.chart_data_by_account(pool).await?
+        ChartData::by_account(pool, filters).await?
     } else {
-        transaction.chart_data_by_category(pool).await?
+        ChartData::by_category(pool, filters).await?
     };
 
     let mut by_day: HashMap<String, Vec<DayData>> = HashMap::new();

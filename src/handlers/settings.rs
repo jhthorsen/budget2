@@ -1,4 +1,4 @@
-use crate::{models::*, request_context::RequestContext, AppState};
+use crate::{AppState, models::*, request_context::RequestContext};
 use askama::Template;
 use axum::extract::State;
 use axum::response::IntoResponse;
@@ -16,22 +16,14 @@ pub async fn settings_page(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     ctx: RequestContext,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
     let template = SettingsTemplate {
-        accounts: AccountWithOwnership::accounts_for_user(&state.pool, user.id)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to fetch accounts"))?,
-        categories: Category::categories_for_user(&state.pool, user.id)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to fetch categories"))?,
+        accounts: AccountWithOwnership::accounts_for_user(&state.pool, user.id).await?,
+        categories: Category::categories_for_user(&state.pool, user.id).await?,
         ctx,
         user,
     };
 
-    Ok(template
-        .render()
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
+    Ok(axum::response::Html(template.render()?).into_response())
 }

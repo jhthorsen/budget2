@@ -1,8 +1,8 @@
+use crate::models::auth::{OAuthUserInfo, SESSION_USER_KEY};
+use crate::{AppState, models::*, request_context::RequestContext};
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
-use crate::{models::*, request_context::RequestContext, AppState};
-use crate::models::auth::{OAuthUserInfo, SESSION_USER_KEY};
 use oauth2::{AuthorizationCode, TokenResponse, reqwest::async_http_client};
 use oauth2::{CsrfToken, Scope};
 use serde::Deserialize;
@@ -25,13 +25,13 @@ pub async fn callback(
     Query(query): Query<AuthRequest>,
     State(state): State<AppState>,
     session: tower_sessions::Session,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let token = state
         .oauth_client
         .exchange_code(AuthorizationCode::new(query.code))
         .request_async(async_http_client)
         .await
-        .map_err(|err| super::render_error(&err.to_string(), "Failed to get token"))?;
+        .map_err(|err| err.to_string())?;
 
     let client = reqwest::Client::new();
     let user_info: OAuthUserInfo = client
@@ -39,10 +39,10 @@ pub async fn callback(
         .bearer_auth(token.access_token().secret())
         .send()
         .await
-        .map_err(|err| super::render_error(&err.to_string(), "Failed to fetch user info"))?
+        .map_err(|err| err.to_string())?
         .json()
         .await
-        .map_err(|err| super::render_error(&err.to_string(), "Failed to parse user info"))?;
+        .map_err(|err| err.to_string())?;
 
     let provider = state
         .oauth_client
@@ -51,20 +51,17 @@ pub async fn callback(
         .host_str()
         .unwrap_or("default");
 
-    let user = user_info
-        .get_or_create_user(&state.pool, provider)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to create user"))?;
+    let user = user_info.get_or_create_user(&state.pool, provider).await?;
 
     session
         .insert(SESSION_USER_KEY, user.id)
         .await
-        .map_err(|err| super::render_error(&err.to_string(), "Unable to insert session"))?;
+        .map_err(|err| format!("Unable to insert session: {err}"))?;
 
     session
         .save()
         .await
-        .map_err(|err| super::render_error(&err.to_string(), "Unable to save session"))?;
+        .map_err(|err| format!("Unable to save session: {err}"))?;
 
     Ok(axum::response::Redirect::to("/dashboard").into_response())
 }
@@ -73,18 +70,14 @@ pub async fn index_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     ctx: RequestContext,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     if auth::get_current_user(&state.pool, &session).await.is_ok() {
         return Ok(axum::response::Redirect::to("/dashboard").into_response());
     }
 
     let template = IndexTemplate { ctx };
 
-    Ok(template
-        .render()
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
+    Ok(axum::response::Html(template.render()?).into_response())
 }
 
 pub async fn login_handler(State(state): State<crate::AppState>) -> impl IntoResponse {

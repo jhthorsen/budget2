@@ -4,45 +4,75 @@ use axum::response::IntoResponse;
 use axum::{Form, extract::State};
 
 #[derive(Template)]
-#[template(path = "add_transaction.html")]
-struct AddTransactionTemplate {
-    accounts: Vec<AccountWithOwnership>,
+#[template(path = "transaction.html")]
+struct TransactionTemplate {
+    accounts: Vec<Account>,
     categories: Vec<Category>,
+    transaction: Transaction,
 }
 
-pub async fn add_transaction_page(
-    State(state): State<crate::AppState>,
-    session: tower_sessions::Session,
-) -> crate::HttpResult {
-    let user = auth::get_current_user(&state.pool, &session).await?;
-
-    let template = AddTransactionTemplate {
-        accounts: AccountWithOwnership::accounts_for_user(&state.pool, user.id)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to fetch accounts"))?,
-        categories: Category::categories_for_user(&state.pool, user.id)
-            .await
-            .map_err(|err| super::db_error(err, "Unable to fetch categories"))?,
-    };
-
-    Ok(template
-        .render()
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
-}
-
-pub async fn create_transaction_handler(
+pub async fn delete_transaction_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    Form(mut transaction): Form<Transaction>,
-) -> crate::HttpResult {
+    Form(transaction): Form<Transaction>,
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
-    transaction.user_id = user.id;
-    transaction
-        .create(&state.pool)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to save new transaction"))?;
+    let mut transaction = Transaction::load(&state.pool, &transaction).await?;
 
     Ok(axum::response::Redirect::to("/dashboard").into_response())
+}
+
+pub async fn edit_transaction_page(
+    State(state): State<crate::AppState>,
+    session: tower_sessions::Session,
+) -> super::HttpResult {
+    let user = auth::get_current_user(&state.pool, &session).await?;
+
+    render_transaction_page(
+        &state,
+        &Transaction {
+            user_id: user.id,
+            ..Transaction::default()
+        },
+    )
+    .await
+}
+
+async fn render_transaction_page(state: &AppState, transaction: &Transaction) -> super::HttpResult {
+    let template = TransactionTemplate {
+        accounts: Account::all(&state.pool).await?,
+        categories: Category::all(&state.pool).await?,
+        transaction: transaction.clone(),
+    };
+
+    Ok(axum::response::Html(template.render()?).into_response())
+}
+
+pub async fn save_transaction_handler(
+    State(state): State<AppState>,
+    session: tower_sessions::Session,
+    Form(transaction): Form<Transaction>,
+) -> super::HttpResult {
+    let _ = auth::get_current_user(&state.pool, &session).await?;
+
+    let mut transaction = match transaction.id > 0 {
+        false => transaction,
+        true => Transaction::load(&state.pool, &transaction)
+            .await?
+            .unwrap_or(transaction),
+    };
+
+    if transaction.original_amount == 0.0 {
+        transaction.original_amount = transaction.amount;
+    }
+
+    let transaction = transaction.save(&state.pool).await?;
+
+    let template = TransactionTemplate {
+        accounts: Account::all(&state.pool).await?,
+        categories: Category::all(&state.pool).await?,
+        transaction,
+    };
+
+    Ok(axum::response::Html(template.render()?).into_response())
 }

@@ -1,58 +1,77 @@
 use askama::Template;
-use axum::response::IntoResponse;
 
 pub mod accounts;
 pub mod auth;
 pub mod categories;
-pub mod import;
 pub mod dashboard;
-pub mod rules;
-pub mod settings;
+pub mod import;
+// pub mod rules;
+// pub mod settings;
 pub mod static_files;
 pub mod transactions;
 
+type HttpResult = Result<axum::response::Response, ErrorTemplate>;
+
 #[derive(Template)]
 #[template(path = "error.html")]
-struct ErrorTemplate {
+pub struct ErrorTemplate {
     friendly: String,
+    redirect: Option<String>,
 }
 
-fn db_error(err: sqlx::Error, friendly: &str) -> axum::response::Response {
-    render_error(&err.to_string(), friendly)
-}
-
-fn render_error(err: &str, friendly: &str) -> axum::response::Response {
-    let friendly = match friendly.is_empty() {
-        true => err,
-        false => friendly,
-    };
-
-    tracing::error!(category="render", friendly, error=err);
-
-    let template = ErrorTemplate {
-        friendly: friendly.to_owned(),
-    };
-
-    match template.render().map(axum::response::Html) {
-        Ok(html) => html.into_response(),
-        Err(err) => {
-            tracing::error!(category="template", error=err.to_string());
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Unable to render error template".to_owned(),
-            )
+impl axum::response::IntoResponse for ErrorTemplate {
+    fn into_response(self) -> axum::response::Response {
+        if let Some(url) = self.redirect.as_ref() {
+            axum::response::Redirect::to(url).into_response()
+        } else {
+            self.render()
+                .map(axum::response::Html)
+                .map_err(|err| {
+                    tracing::error!(category = "template", error = err.to_string());
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR
+                })
                 .into_response()
         }
     }
 }
 
-fn session_error(err: Option<tower_sessions::session::Error>) -> axum::response::Response {
-    match err {
-        Some(err) => render_error(&err.to_string(), "Request does not match active session"),
-        None => render_error("No active session", "No active session"),
+impl From<askama::Error> for ErrorTemplate {
+    fn from(err: askama::Error) -> Self {
+        tracing::error!(friendly = err.to_string(), error = err.to_string());
+        ErrorTemplate {
+            friendly: err.to_string(),
+            redirect: None,
+        }
     }
 }
 
-fn template_error(err: askama::Error) -> axum::response::Response {
-    render_error(&err.to_string(), "Unable to render template")
+impl From<sqlx::Error> for ErrorTemplate {
+    fn from(err: sqlx::Error) -> Self {
+        let friendly = "Unable to communicate with the databsae".to_owned();
+        tracing::error!(friendly, error = err.to_string());
+        ErrorTemplate {
+            friendly,
+            redirect: None,
+        }
+    }
+}
+
+impl From<&str> for ErrorTemplate {
+    fn from(err: &str) -> Self {
+        tracing::error!(friendly = err.to_string(), error = err.to_string());
+        ErrorTemplate {
+            friendly: err.to_string(),
+            redirect: None,
+        }
+    }
+}
+
+impl From<String> for ErrorTemplate {
+    fn from(err: String) -> Self {
+        tracing::error!(friendly = err.to_string(), error = err.to_string());
+        ErrorTemplate {
+            friendly: err.to_string(),
+            redirect: None,
+        }
+    }
 }

@@ -2,14 +2,19 @@
   <article>
     <header>
       <button form="dialog" aria-label="Close" rel="prev"></button>
-      <h2>Add Transaction</h2>
+      {% if transaction.id > 0 %}
+        <h2>Add Transaction</h2>
+      {% else %}
+        <h2>Edit Transaction</h2>
+      {% endif %}
     </header>
 
-    <form id="add_transaction_form" action="/transactions" method="post">
+    <form id="transaction_form" action="/transactions" method="post">
+      <input type="hidden" name="user_iud" value="{{ transaction.user_id }}">
       <fieldset class="grid">
         <label>
           Date
-          <input type="date" name="transaction_date" required>
+          <input type="date" name="processed_at" required>
         </label>
         <label>
           Type
@@ -18,9 +23,19 @@
             <option value="expense" selected>Expense</option>
           </select>
         </label>
+      </fieldset>
+      <fieldset role="grid">
         <label>
           Amount
           <input type="number" name="amount" step="0.01" min="0" required placeholder="0.00">
+        </label>
+        <label>
+          Original currency amount
+          <input type="number" name="original_amount" step="0.01" min="0" placeholder="Same as amount">
+        </label>
+        <label>
+          Currency
+          <input type="text" name="original_currency" placeholder="Default currency">
         </label>
       </fieldset>
       <fieldset class="grid">
@@ -51,7 +66,7 @@
 
     <footer>
       <button form="dialog" class="secondary">Cancel</button>
-      <button form="add_transaction_form">Add Transaction</button>
+      <button form="transaction_form">Add Transaction</button>
     </footer>
   </article>
 </dialog>

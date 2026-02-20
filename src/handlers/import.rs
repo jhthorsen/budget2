@@ -68,11 +68,38 @@ impl ColumnMapping {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct CsvUploadSession {
+    file_id: String,
+    file_path: String,
+    headers: Vec<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ImportError {
     pub row_number: usize,
     pub row_data: String,
     pub error: String,
+}
+
+impl From<String> for ImportError {
+    fn from(error: String) -> Self {
+        ImportError {
+            row_number: 0,
+            row_data: "".to_string(),
+            error,
+        }
+    }
+}
+
+impl From<sqlx::Error> for ImportError {
+    fn from(err: sqlx::Error) -> Self {
+        ImportError {
+            row_number: 0,
+            row_data: "".to_string(),
+            error: err.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -103,16 +130,16 @@ pub async fn csv_import_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     Form(mapping): Form<ColumnMapping>,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
     let csv_session: CsvUploadSession = match session.get(CSV_SESSION_KEY).await {
         Ok(Some(s)) => s,
-        Ok(None) => return Err(super::session_error(None)),
-        Err(err) => return Err(super::session_error(Some(err))),
+        Ok(None) => return Err("No active session.")?,
+        Err(err) => return Err("Request does not match active session.")?,
     };
 
     if csv_session.file_id != mapping.file_id {
-        return Err(super::render_error("File ID mismatch", ""));
+        Err("File ID mismatch")?;
     }
 
     let file_path = PathBuf::from(&csv_session.file_path);
@@ -124,33 +151,31 @@ pub async fn csv_import_handler(
         .await
         .ok();
 
-    let result = result.map_err(|err| super::render_error(&err, &err))?;
+    let result = result?;
     let template = CsvImportedTemplate { result };
 
-    Ok(template
-        .render()
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
+    Ok(axum::response::Html(template.render()?).into_response())
 }
 
 pub async fn csv_upload_handler(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     mut multipart: Multipart,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
     let temp_dir = std::env::temp_dir();
 
-    while let Some(field) = multipart.next_field().await.map_err(|err| {
-        super::render_error(&err.to_string(), "Something is wrong with the upload")
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|err| format!("Unable to upload: {err}"))?
+    {
         if field.name() != Some("csv_file") {
             continue;
         }
 
         let Some(file_name) = field.file_name() else {
-            return Err(super::render_error("CSV file must have a file name", ""));
+            return Err("CSV file must have a file name")?;
         };
 
         let file_id = &format!(
@@ -163,14 +188,13 @@ pub async fn csv_upload_handler(
         let data = field
             .bytes()
             .await
-            .map_err(|err| super::render_error(&err.to_string(), "Failed to read file data"))?;
+            .map_err(|err| format!("Unable to read file: {err}"))?;
 
-        std::fs::write(&file_path, &data)
-            .map_err(|err| super::render_error(&err.to_string(), "Failed to save file"))?;
+        std::fs::write(&file_path, &data).map_err(|err| format!("Unable to save file: {err}"))?;
 
         let headers = read_csv_headers(&file_path).map_err(|err| {
             std::fs::remove_file(&file_path).ok();
-            super::render_error(&err.to_string(), "Failed to read CSV headers")
+            format!("Unable to read CSV headers: {err}")
         })?;
 
         let csv_session = CsvUploadSession {
@@ -182,35 +206,27 @@ pub async fn csv_upload_handler(
         session
             .insert(CSV_SESSION_KEY, csv_session)
             .await
-            .map_err(|err| super::render_error(&err.to_string(), "Failed to insert session"))?;
+            .map_err(|err| err.to_string())?;
 
         let template = CsvMappingTemplate {
             file_id: file_id.clone(),
             headers,
         };
 
-        return Ok(template
-            .render()
-            .map(axum::response::Html)
-            .map_err(super::template_error)?
-            .into_response());
+        return Ok(axum::response::Html(template.render()?).into_response());
     }
 
-    Err(super::render_error("No file uploaded", ""))
+    Err("No file uploaded")?
 }
 
 pub async fn csv_upload_page(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let _user = auth::get_current_user(&state.pool, &session).await?;
     let template = CsvUploadTemplate {};
 
-    Ok(template
-        .render()
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
+    Ok(axum::response::Html(template.render()?).into_response())
 }
 
 fn read_csv_headers(path: &PathBuf) -> Result<Vec<String>, String> {
@@ -259,19 +275,19 @@ async fn import_csv_file(
                         successful += 1;
                     }
                 }
-                Err(e) => {
+                Err(err) => {
                     errors.push(ImportError {
                         row_number,
                         row_data: format!("{:?}", record),
-                        error: e,
+                        error: err.error,
                     });
                 }
             },
-            Err(e) => {
+            Err(err) => {
                 errors.push(ImportError {
                     row_number,
                     row_data: "Failed to read row".to_string(),
-                    error: e.to_string(),
+                    error: err.to_string(),
                 });
             }
         }
@@ -289,47 +305,43 @@ async fn import_row(
     user: &User,
     record: &StringRecord,
     mapping: &ColumnMapping,
-) -> Result<bool, String> {
+) -> Result<bool, ImportError> {
     let mut t = Transaction {
-        id: 0,
         user_id: user.id,
-        account_id: None,
-        account: None,
-        category_id: None,
-        amount: 0.0,
-        original_amount: 0.0,
         description: mapping
             .value(record, Some(&mapping.description_column))?
             .to_string(),
-        transaction_date: normalize_date(mapping.value(record, Some(&mapping.date_column))?)?,
-        transaction_type: "".to_string(),
+        processed_at: normalize_date(mapping.value(record, Some(&mapping.date_column))?)?,
+        ..Transaction::default()
     };
 
     let account_name = mapping
         .non_empty_value(record, mapping.account_column.as_deref())
-        .map(|v| Some(v.to_string()))
-        .unwrap_or(mapping.account_fixed_name.clone());
+        .ok()
+        .or(mapping.account_fixed_name.as_deref());
 
-    if let Some(account_name) = &account_name {
-        t.account_id = Some(
-            AccountWithOwnership::ensure(&state.pool, account_name)
-                .await
-                .map_err(|err| err.to_string())?,
-        );
+    if let Some(account_name) = account_name {
+        t.account_id = Account::by_name(&state.pool, account_name)
+            .await?
+            .save(&state.pool)
+            .await?
+            .id;
     }
 
     let category_name = mapping.non_empty_value(record, mapping.category_column.as_deref());
-    if let Ok(category_name) = &category_name {
+    if let Ok(category_name) = category_name {
         t.category_id = Some(
-            Category::ensure(&state.pool, user.id, category_name)
-                .await
-                .map_err(|err| err.to_string())?,
+            Category::by_name(&state.pool, category_name)
+                .await?
+                .save(&state.pool)
+                .await?
+                .id,
         );
     }
 
     // Apply import rules if category/account not set from CSV
-    if t.category_id.is_none() || t.account_id.is_none() {
-        for rule in ImportRuleWithNames::rules_for_user(&state.pool, user.id)
+    if t.category_id.is_none() || t.account_id == 0 {
+        for rule in ImportRule::all(&state.pool)
             .await
             .map_err(|e| format!("Database error fetching rules: {}", e))?
         {
@@ -355,9 +367,9 @@ async fn import_row(
             "expense".to_string()
         };
 
-        t.create_or_update(&state.pool)
-            .await
-            .map_err(|e| format!("Database error inserting transaction: {}", e))?;
+        // t.create_or_update(&state.pool)
+        //     .await
+        //     .map_err(|e| format!("Database error inserting transaction: {}", e))?;
         imported += 1;
     }
 
@@ -372,9 +384,9 @@ async fn import_row(
             "income".to_string()
         };
 
-        t.create_or_update(&state.pool)
-            .await
-            .map_err(|e| format!("Database error inserting transaction: {}", e))?;
+        // t.create_or_update(&state.pool)
+        //     .await
+        //     .map_err(|e| format!("Database error inserting transaction: {}", e))?;
         imported += 1;
     }
 

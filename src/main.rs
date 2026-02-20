@@ -3,12 +3,38 @@ mod handlers;
 mod models;
 mod request_context;
 
+use askama::Template;
 use axum::routing::{get, post};
 use std::str::FromStr;
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-type HttpResult = Result<axum::response::Response, axum::response::Response>;
+#[macro_export]
+macro_rules! set_if_empty {
+    ($obj:expr, $field:ident, $value:expr) => {{
+        if $obj.$field.is_empty() && !$value.is_empty() {
+            $obj.$field = $value.into();
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! set_if_none {
+    ($obj:expr, $field:ident, $value:expr) => {{
+        if $obj.$field.is_none() && $value.is_some() {
+            $obj.$field = $value.clone();
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! set_if_non_zero {
+    ($obj:expr, $field:ident, $value:expr) => {{
+        if $value as i64 != 0 {
+            $obj.$field = $value;
+        }
+    }};
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -32,8 +58,9 @@ async fn main() {
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:budget.db".to_string());
 
-    let options =
-        sqlx::sqlite::SqliteConnectOptions::from_str(&database_url).expect("Valid DATABASE_URL").create_if_missing(true);
+    let options = sqlx::sqlite::SqliteConnectOptions::from_str(&database_url)
+        .expect("Valid DATABASE_URL")
+        .create_if_missing(true);
 
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(5)
@@ -83,16 +110,16 @@ async fn main() {
         .route("/logout", get(handlers::auth::logout_handler))
         .route(
             "/accounts",
-            post(handlers::accounts::create_account_handler),
+            post(handlers::accounts::ensure_account_handler),
         )
         .route(
-            "/accounts/toggle-ownership",
-            post(handlers::accounts::toggle_account_ownership_handler),
+            "/transactions",
+            get(handlers::transactions::edit_transaction_page)
+                .post(handlers::transactions::save_transaction_handler),
         )
-        .route("/add", get(handlers::transactions::add_transaction_page))
         .route(
             "/categories",
-            post(handlers::categories::create_category_handler),
+            post(handlers::categories::ensure_category_handler),
         )
         .route("/dashboard", get(handlers::dashboard::dashboard_handler))
         .route("/import", get(handlers::import::csv_upload_page))
@@ -101,25 +128,17 @@ async fn main() {
             post(handlers::import::csv_import_handler),
         )
         .route("/import/upload", post(handlers::import::csv_upload_handler))
-        .route("/rules", get(handlers::rules::rules_list))
-        .route(
-            "/rules/:id/apply",
-            post(handlers::rules::apply_rule_to_transactions),
-        )
-        .route("/rules/:id/delete", post(handlers::rules::rules_delete))
-        .route(
-            "/rules/:id/edit",
-            get(handlers::rules::rules_edit_page).post(handlers::rules::rules_update),
-        )
-        .route(
-            "/rules/new",
-            get(handlers::rules::rules_new_page).post(handlers::rules::rules_create),
-        )
-        .route("/settings", get(handlers::settings::settings_page))
-        .route(
-            "/transactions",
-            post(handlers::transactions::create_transaction_handler),
-        )
+        //.route("/rules", get(handlers::rules::rules_list))
+        //.route(
+        //    "/rules/:id/apply",
+        //    post(handlers::rules::apply_rule_to_transactions),
+        //)
+        //.route("/rules/:id/delete", post(handlers::rules::rules_delete))
+        //.route(
+        //    "/rules",
+        //    get(handlers::rules::rules_new_page).post(handlers::rules::rule_ensure_handler),
+        //)
+        //.route("/settings", get(handlers::settings::settings_page))
         .layer(session_layer)
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);

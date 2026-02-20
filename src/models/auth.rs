@@ -1,5 +1,4 @@
 use super::User;
-use axum::response::IntoResponse;
 use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl, basic::BasicClient};
 use serde::Deserialize;
 
@@ -120,9 +119,9 @@ pub async fn create_oauth_client() -> Result<(BasicClient, String), OauthError> 
 pub async fn get_current_user(
     pool: &sqlx::SqlitePool,
     session: &tower_sessions::Session,
-) -> Result<User, axum::response::Response> {
+) -> Result<User, String> {
     let Ok(Some(user_id)) = session.get::<i64>(SESSION_USER_KEY).await else {
-        return Err(axum::response::Redirect::to("/?error=no_session").into_response());
+        return Err("No session".to_string())?;
     };
 
     sqlx::query_as!(
@@ -134,6 +133,6 @@ pub async fn get_current_user(
     )
     .fetch_optional(pool)
     .await
-    .map_err(|_| axum::response::Redirect::to("/?error=db_error").into_response())?
-    .ok_or(axum::response::Redirect::to("/?error=user_not_found").into_response())
+    .map_err(|err| err.to_string())?
+    .ok_or("User not found".to_string())
 }

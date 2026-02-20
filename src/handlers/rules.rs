@@ -32,11 +32,9 @@ pub async fn rules_list(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     ctx: RequestContext,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
-    let rules = ImportRuleWithNames::rules_for_user(&state.pool, user.id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch rules"))?;
+    let rules = ImportRuleWithNames::rules_for_user(&state.pool, user.id).await?;
 
     // Group rules by category
     let mut grouped_rules: Vec<CategoryGroup> = Vec::new();
@@ -82,26 +80,17 @@ pub async fn rules_list(
         grouped_rules,
     };
 
-    Ok(template
-        .render()
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
+    Ok(axum::response::Html(template.render()?).into_response())
 }
 
 pub async fn rules_new_page(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     ctx: RequestContext,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
-    let categories = Category::categories_for_user(&state.pool, user.id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch categories"))?;
-    let accounts = AccountWithOwnership::accounts_for_user(&state.pool, user.id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch accounts"))?;
-
+    let categories = Category::categories_for_user(&state.pool, user.id).await?;
+    let accounts = AccountWithOwnership::accounts_for_user(&state.pool, user.id).await?;
     let template = RulesFormTemplate {
         accounts,
         categories,
@@ -110,18 +99,14 @@ pub async fn rules_new_page(
         user,
     };
 
-    Ok(template
-        .render()
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
+    Ok(axum::response::Html(template.render()?).into_response())
 }
 
 pub async fn rules_create(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     Form(form): Form<ImportRuleForm>,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
     let mut rule = ImportRuleWithNames {
         category_id: form
@@ -138,9 +123,7 @@ pub async fn rules_create(
         ..ImportRuleWithNames::default()
     };
 
-    rule.create(&state.pool)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to save rule"))?;
+    rule.create(&state.pool).await?;
 
     Ok(axum::response::Redirect::to("/rules").into_response())
 }
@@ -150,18 +133,13 @@ pub async fn rules_edit_page(
     session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
     ctx: RequestContext,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
     let rule = ImportRuleWithNames::get(&state.pool, user.id, rule_id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable find rule"))?
+        .await?
         .ok_or_else(|| (axum::http::StatusCode::NOT_FOUND, "Rule not found").into_response())?;
-    let categories = Category::categories_for_user(&state.pool, user.id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch categories"))?;
-    let accounts = AccountWithOwnership::accounts_for_user(&state.pool, user.id)
-        .await
-        .map_err(|err| super::db_error(err, "Unable to fetch accounts"))?;
+    let categories = Category::categories_for_user(&state.pool, user.id).await?;
+    let accounts = AccountWithOwnership::accounts_for_user(&state.pool, user.id).await?;
 
     let template = RulesFormTemplate {
         accounts,
@@ -171,11 +149,7 @@ pub async fn rules_edit_page(
         user,
     };
 
-    Ok(template
-        .render()
-        .map(axum::response::Html)
-        .map_err(super::template_error)?
-        .into_response())
+    Ok(axum::response::Html(template.render()?).into_response())
 }
 
 pub async fn rules_update(
@@ -183,7 +157,7 @@ pub async fn rules_update(
     session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
     Form(form): Form<ImportRuleForm>,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
 
     let mut rule = ImportRuleWithNames {
@@ -213,7 +187,7 @@ pub async fn rules_delete(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
     let mut rule = ImportRuleWithNames {
         id: rule_id,
@@ -232,7 +206,7 @@ pub async fn apply_rule_to_transactions(
     State(state): State<AppState>,
     session: tower_sessions::Session,
     Path(rule_id): Path<i64>,
-) -> crate::HttpResult {
+) -> super::HttpResult {
     let user = auth::get_current_user(&state.pool, &session).await?;
     let rule = ImportRuleWithNames::get(&state.pool, user.id, rule_id)
         .await

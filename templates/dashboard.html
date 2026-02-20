@@ -28,10 +28,10 @@
       <thead id="form_filter_fields" data-preserve>
         <tr>
           <th>
-            <input form="form_filter" type="month" name="month" placeholder="YYYY-MM" value="{{ filters.month }}" data-init on:change="loadTransactions(el)">
+            <input form="form_filter" type="processed_at" name="processed_at" placeholder="YYYY-MM" value="{{ filters.processed_at }}" data-init on:change="loadTransactions(el)">
           </th>
           <th>
-            <input form="form_filter" type="text" name="search" placeholder="Search..." value="{{ filters.search }}" data-init on:keyup="@debounce(loadTransactions(el), 400)">
+            <input form="form_filter" type="text" name="description" placeholder="Search..." value="{{ filters.description }}" data-init on:keyup="@debounce(loadTransactions(el), 400)">
           </th>
           <th>
             <select form="form_filter" name="account_id" data-init on:change="loadTransactions(el)">

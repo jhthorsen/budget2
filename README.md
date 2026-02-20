@@ -99,6 +99,18 @@ The database is automatically created and migrated on first run. The SQLite data
 
 ## Database Schema
 
+```
+users.id --- accounts.user_id
+         |   accounts.id --- transactions.account_id
+         |
+         '-- transactions.user_id
+             transactions.account_id --- accounts.id
+             transactions.category_id ~~~ categories.id
+
+import_rules.account_id ~~ accounts.id
+import_rules.category_id ~~ categories.id
+```
+
 ## Development
 
 Run in development mode with auto-reload:
