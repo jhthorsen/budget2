@@ -342,11 +342,7 @@
     const r = {method: $n.method || 'get'}
     const b = new FormData($n)
     if (r.method.toLowerCase() == 'post') {
-      const c = 'application/x-www-form-urlencoded'
-      const t = $n.enctype || c
-      r.headers = new Headers()
-      r.headers.append('content-type', t)
-      r.body = t == c ? new URLSearchParams(b) : b
+      r.body = $n.enctype == 'application/x-www-form-urlencoded' ? new URLSearchParams(b) : b
     } else {
       r.search = Object.fromEntries(b.entries())
     }
