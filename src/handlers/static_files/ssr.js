@@ -306,6 +306,13 @@
   })
 
   listen($w, $d.body, 'click', (evt) => {
+    const $btn = evt.target?.closest('[form=dialog]')
+    if ($btn) {
+      evt.preventDefault()
+      $btn.closest('dialog').close($btn.value)
+      return
+    }
+
     if (evt.target?.closest('button, input, select, textarea')) return
 
     const $n = evt.target?.closest('[href]')
