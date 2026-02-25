@@ -80,91 +80,6 @@ A web-based budget tracking application built with Rust, using the Axum web fram
 
    The app will be available at `http://localhost:3000`
 
-## Database
-
-The database is automatically created and migrated on first run. The SQLite database file will be created as `budget.db` in the project root.
-
-## Usage
-
-1. **Login** - Click "Login with OAuth" to authenticate
-2. **Add Accounts** - Create accounts to organize your transactions (e.g., Checking, Savings, Credit Card)
-   - Accounts are shared - multiple users can access the same account
-   - Mark accounts as "Mine" or "Not Mine" in the "Manage Accounts" section
-   - Your balance only includes transactions from accounts marked as "Mine"
-   - Great for household budgets where some accounts are shared but not owned by everyone
-3. **Add Categories** - Create categories to organize your transactions (categories are user-specific)
-4. **Add Transactions** - Record income and expenses with descriptions, dates, accounts, and categories
-5. **Import CSV** - Bulk import transactions from CSV files:
-   - Click "Import CSV" button on the dashboard
-   - Upload your CSV file
-   - Map CSV columns to transaction fields
-   - Accounts and categories will be created automatically if they don't exist
-   - Newly created accounts are marked as "Mine" by default
-   - Review import results showing any errors
-6. **Filter & Search** - Use the filter form to find specific transactions
-7. **View Dashboard** - See your budget summary (only "Mine" accounts) and recent transactions
-
-## Project Structure
-
-```
-budget2/
-├── src/
-│   ├── main.rs              # Application entry point
-│   ├── auth.rs              # OAuth2 authentication
-│   ├── handlers/
-│   │   ├── mod.rs           # Route handlers
-│   │   └── csv.rs           # CSV import handlers
-│   └── models/
-│       └── mod.rs           # Database models
-├── templates/
-│   ├── index.html           # Landing page
-│   ├── dashboard.html       # Main dashboard
-│   ├── csv_upload.html      # CSV upload page
-│   ├── csv_mapping.html     # Column mapping page
-│   └── csv_result.html      # Import results page
-├── migrations/
-│   ├── 20240101000000_initial.sql       # Database schema
-│   ├── 20240102000000_add_account.sql   # Account field migration
-│   ├── 20240103000000_accounts_table.sql # Accounts table with sharing
-│   └── 20240104000000_add_is_mine.sql   # Account ownership marking
-├── Cargo.toml
-└── .env.example
-```
-
-## Database Schema
-
-### Key Tables
-- **users** - User accounts from OAuth
-- **accounts** - Shared accounts (Checking, Savings, etc.)
-- **user_accounts** - Many-to-many relationship for account sharing
-- **categories** - User-specific transaction categories
-- **transactions** - Financial transactions linked to users, accounts, and categories
-
-### Account Sharing
-Accounts are designed to be shared between users:
-- When an account is created, it's added to the `accounts` table
-- The creator is automatically linked via `user_accounts` table with `is_mine = 1`
-- Other users can be given access to the same account
-- Each user can mark accounts as "Mine" (included in balance) or "Not Mine" (excluded from balance)
-- Perfect for scenarios like:
-  - **Couples**: Shared checking account, but each person has their own savings
-  - **Roommates**: Shared utilities account, but personal credit cards
-  - **Families**: Parents can see children's accounts but exclude them from their own balance
-  - **Business**: Shared company account, but personal expense accounts
-
-## Development
-
-Run in development mode with auto-reload:
-```bash
-cargo watch -x run
-```
-
-Check code:
-```bash
-cargo check
-cargo clippy
-```
-
 ## Environment Variables
 
 - `DATABASE_URL` - SQLite database path (default: `sqlite:budget.db`)
@@ -178,60 +93,24 @@ cargo clippy
 
 The app automatically fetches authorization, token, and userinfo endpoints from the discovery URL, so you don't need to configure them separately.
 
-## CSV Import Format
+## Database
 
-The CSV import feature supports flexible column mapping. Your CSV file should:
+The database is automatically created and migrated on first run. The SQLite database file will be created as `budget.db` in the project root.
 
-- Have a header row with column names
-- Include the following data:
-  - **Date**: YYYY-MM-DD or YYYY/MM/DD format
-  - **Amount**: Numeric value ($ and commas are automatically removed)
-  - **Description**: Transaction description
-  - **Type**: Either map to a CSV column containing "income" or "expense", OR set a fixed value for all rows
-  - **Account** (optional): Either map to a CSV column, OR set a fixed value for all rows (e.g., "Checking")
-  - **Category** (optional): Category names will be automatically created if they don't exist
+## Database Schema
 
-### Automatic Category Creation
+## Development
 
-When importing transactions with categories, the system will:
-- Check if the category already exists for your user
-- If it exists, use the existing category
-- If it doesn't exist, automatically create a new category with that name
-- Show you a list of all newly created categories after import
-
-This means you don't need to pre-create all categories before importing!
-
-### Fixed Values
-
-You can use fixed values instead of CSV columns for:
-- **Type**: If all transactions in the CSV are the same type (e.g., all expenses)
-- **Account**: If all transactions are from the same account (e.g., all from "Checking")
-
-This is useful when importing bank statements that don't include these fields.
-
-Example CSV with type column:
-```csv
-Date,Description,Amount,Type,Account,Category
-2024-01-15,Salary,$3000.00,income,Checking,
-2024-01-16,Groceries,125.50,expense,Checking,Food
-2024/01/17,Electric Bill,85.00,expense,Checking,Utilities
+Run in development mode with auto-reload:
+```bash
+cargo watch -x run
 ```
 
-Example CSV without type column (using fixed value):
-```csv
-Date,Description,Amount,Category
-2024-01-16,Groceries,125.50,Food
-2024/01/17,Electric Bill,85.00,Utilities
-2024/01/18,Internet,60.00,Utilities
+Check code:
+```bash
+cargo check
+cargo clippy
 ```
-*In this case, you would set Type to "expense" and Account to "Checking" as fixed values during import.*
-
-The import process will:
-1. Show you all CSV column headers
-2. Let you map them to transaction fields
-3. Import all valid rows
-4. Report any rows that failed with detailed error messages
-5. Automatically delete the temporary CSV file after processing
 
 ## License
 
