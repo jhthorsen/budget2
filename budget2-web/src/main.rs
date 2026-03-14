@@ -1,6 +1,7 @@
 mod handlers;
 mod helpers;
 
+use axum::routing::get;
 use helpers::env_or;
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -50,6 +51,7 @@ async fn main() {
 
     let state = AppState { pool };
     let app = axum::Router::new()
+        .route("/static/:file", get(static_files::get))
         .nest("/", handlers::routes(state))
         .layer(session_layer)
         .layer(tower_http::trace::TraceLayer::new_for_http());
