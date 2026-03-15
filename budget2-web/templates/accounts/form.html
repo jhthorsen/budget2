@@ -1,0 +1,36 @@
+<details id="edit_account_details" class="section" {% if form_open %}open{% endif %}>
+  <summary role="button" class="secondary">{% if is_editing %}Edit account{% else %}Add account{% endif %}</summary>
+  <form method="post" action="/accounts/{{ form.id }}">
+    <input type="hidden" name="id" value="{{ form.id }}">
+    <input type="hidden" name="user_id" value="{{ form.user_id }}">
+
+    <fieldset class="grid">
+      <label>
+        Name
+        <input type="text" name="name" minlength="3" maxlength="64" required
+          value="{{ form.name }}" placeholder="e.g. ImportNameChecking123">
+        <small>Should match the import account name.</small>
+      </label>
+
+      <label>
+        Friendly name
+        <input type="text" name="friendly"
+          value="{{ form.friendly }}" placeholder="e.g. Alex's Checking Account">
+        <small>How it appears in the UI.</small>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <label>
+        Description
+        <textarea name="description" rows="2"
+          placeholder="Optional — a brief note about this account.">{{ form.description }}</textarea>
+      </label>
+    </fieldset>
+
+    <div class="form-footer">
+      <a href="#close" role="button" class="secondary">Cancel</a>
+      <button type="submit">{% if is_editing %}Save account{% else %}Add account{% endif %}</button>
+    </div>
+  </form>
+</details>

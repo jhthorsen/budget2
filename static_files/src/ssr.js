@@ -390,6 +390,13 @@
     if ($n.target == 'preventDefault') evt.preventDefault()
     if (evt.defaultPrevented) return
 
+    if ($n.href.endsWith('#close')) {
+      evt.preventDefault()
+      $n.closest('details')?.toggleAttribute("open")
+      $n.closest('dialog')?.close()
+      return
+    }
+
     const url = new URL($n.href || $n.getAttribute('href'), location.href)
     if (url.origin !== location.origin) return // external link
 

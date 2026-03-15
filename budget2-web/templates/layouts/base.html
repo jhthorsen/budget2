@@ -19,10 +19,10 @@
       main > article {
         background-color: transparent;
         border-color: transparent;
-      }
 
-      main > article > header.no-margin {
-        margin-bottom: 0;
+        & > header.no-margin {
+          margin-bottom: 0;
+        }
       }
 
       article {
@@ -57,11 +57,34 @@
         }
       }
 
+      details.section {
+        background-color: var(--pico-card-background-color);
+        border: var(--pico-spacing) solid var(--pico-card-border-color);
+        border-radius: var(--pico-border-radius);
+        margin-inline: calc(var(--pico-spacing) * -1);
+
+        summary {
+          width: fit-content;
+        }
+      }
+
       .flex-wrap {
         display: flex;
         flex-wrap: wrap;
         gap: var(--pico-grid-column-gap) var(--pico-grid-row-gap);
         justify-content: center;
+      }
+
+      .form-footer {
+        display: flex;
+        justify-content: flex-start;
+        gap: var(--pico-grid-column-gap);
+
+        > *,
+        > button[type=submit] {
+          margin-bottom: var(--pico-spacing);
+          width: fit-content;
+        }
       }
 
       .nowrap {
