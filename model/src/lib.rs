@@ -1,7 +1,8 @@
 use std::str::FromStr;
 
-pub type Pool = sqlx::SqlitePool;
 pub type DbResult<T> = Result<T, sqlx::Error>;
+pub type Error = sqlx::Error;
+pub type Pool = sqlx::SqlitePool;
 
 pub async fn build_pool(database_url: &str, migrate: bool) -> DbResult<Pool> {
     let options =
