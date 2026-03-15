@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "budget2-web",
+  "macros",
   "model",
   "static_files",
 ]
@@ -21,6 +22,7 @@ authors = [
 ]
 
 [workspace.dependencies]
+macros = { path = "./macros" }
 model = { path = "./model" }
 static_files = { path = "./static_files" }
 askama = "0.15"
