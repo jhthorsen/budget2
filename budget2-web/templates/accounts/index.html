@@ -1,0 +1,51 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Accounts{% endblock %}
+{% block nav_items %}
+  <li><a href="/">Home</a></li>
+  <li><a href="/accounts" aria-current="page">Accounts</a></li>
+{% endblock %}
+
+{% block content %}
+<article>
+  <header class="no-margin">
+    <h1>Accounts</h1>
+    <p>
+      Accounts are automatically created when you import transactions,
+      but you can also create them manually here.
+    </p>
+  </header>
+
+  <section>
+    {% include "accounts/form.html" %}
+  </section>
+
+  <section>
+    <h2>All accounts</h2>
+    {% if accounts.is_empty() %}
+      <p>No accounts exists.</p>
+    {% else %}
+      <figure>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Friendly name</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for account in accounts %}
+              <tr>
+                <td class="nowrap"><a href="/accounts/{{ account.id }}">{{ account.name }}</a></td>
+                <td>{{ account.friendly }}</td>
+                <td>{{ account.description }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </figure>
+    {% endif %}
+  </section>
+</article>
+{% endblock %}
