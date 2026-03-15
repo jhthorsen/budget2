@@ -1,5 +1,7 @@
+mod accounts;
 mod user;
 
+pub use accounts::*;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 pub use user::User;
@@ -22,6 +24,10 @@ pub async fn build_pool(database_url: &str, migrate: bool) -> DbResult<Pool> {
     }
 
     Ok(pool)
+}
+
+fn invalid(reason: &str) -> Result<(), sqlx::Error> {
+    Err(sqlx::Error::Protocol(reason.to_owned()))
 }
 
 #[cfg(test)]
