@@ -1,4 +1,8 @@
+mod user;
+
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+pub use user::User;
 
 pub type DbResult<T> = Result<T, sqlx::Error>;
 pub type Error = sqlx::Error;

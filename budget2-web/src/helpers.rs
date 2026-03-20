@@ -1,8 +1,10 @@
-pub use crate::request_context::RequestContext;
+pub use crate::{AppState, request_context::RequestContext};
 pub use askama::Template;
+pub use axum::extract::{Query, State};
 use axum::http::StatusCode;
 pub use axum::response::IntoResponse;
 pub use axum::response::{Html, Response};
+pub use model::Pool;
 
 pub type HttpResult = Result<Response, ErrorTemplate>;
 
@@ -74,4 +76,19 @@ impl IntoResponse for ErrorTemplate {
 
 pub fn env_or(key: &str, fallback: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| fallback.to_string())
+}
+
+pub async fn get_current_user(
+    pool: &Pool,
+    session: &tower_sessions::Session,
+) -> Result<model::User, String> {
+    let Ok(Some(user_id)) = session.get::<i64>("user_id").await else {
+        return Err("No session".to_string())?;
+    };
+
+    match model::User::load(pool, user_id).await {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => Err("User not found".to_string()),
+        Err(err) => Err(err.to_string()),
+    }
 }

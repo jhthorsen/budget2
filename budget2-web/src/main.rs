@@ -1,5 +1,6 @@
 mod handlers;
 mod helpers;
+mod oauth;
 mod request_context;
 
 use axum::routing::get;
@@ -9,16 +10,23 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone)]
 pub struct AppState {
+    pub oauth_client: oauth2::basic::BasicClient,
     pub pool: model::Pool,
+    pub userinfo_url: String,
 }
 
-fn bind_address() -> String {
+async fn listen(app: axum::Router) -> Result<(), std::io::Error> {
     let host = env_or("HOST", "127.0.0.1");
     let port = env_or("PORT", "3000")
         .parse::<u16>()
         .expect("PORT= must be an integer");
 
-    format!("{host}:{port}")
+    let listener = tokio::net::TcpListener::bind(&format!("{host}:{port}"))
+        .await
+        .expect("To listen to port");
+
+    tracing::info!("Availablle at http://{}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await
 }
 
 fn setup_tracing() {
@@ -50,19 +58,22 @@ async fn main() {
         .with_secure(matches!(env_or("SECURE_SESSION", "true").as_str(), "1" | "true"))
         .with_expiry(tower_sessions::Expiry::OnInactivity(time::Duration::days(7)));
 
-    let state = AppState { pool };
+    let (oauth_client, userinfo_url) = oauth::build_client()
+        .await
+        .unwrap_or_else(|err| panic!("Failed to create OAuth client: {err}"));
+    let state = AppState {
+        oauth_client,
+        pool,
+        userinfo_url,
+    };
+
     let app = axum::Router::new()
         .route("/static/:file", get(static_files::get))
         .nest("/", handlers::routes(state))
         .layer(session_layer)
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
-    let listener = tokio::net::TcpListener::bind(&bind_address())
+    listen(app)
         .await
-        .expect("To listen to port");
-
-    tracing::info!("Availablle at http://{}", listener.local_addr().unwrap());
-    axum::serve(listener, app)
-        .await
-        .expect("To serve at address");
+        .expect("Should be able to start the server");
 }
