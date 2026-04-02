@@ -1,7 +1,9 @@
 mod accounts;
+mod categories;
 mod user;
 
 pub use accounts::*;
+pub use categories::*;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 pub use user::User;
