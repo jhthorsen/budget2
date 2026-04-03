@@ -1,6 +1,6 @@
 mod handlers;
 mod helpers;
-mod oauth;
+mod oidc;
 mod request_context;
 
 use axum::routing::get;
@@ -58,7 +58,7 @@ async fn main() {
         .with_secure(matches!(env_or("SECURE_SESSION", "true").as_str(), "1" | "true"))
         .with_expiry(tower_sessions::Expiry::OnInactivity(time::Duration::days(7)));
 
-    let (oauth_client, userinfo_url) = oauth::build_client()
+    let (oauth_client, userinfo_url) = oidc::build_client()
         .await
         .unwrap_or_else(|err| panic!("Failed to create OAuth client: {err}"));
     let state = AppState {
