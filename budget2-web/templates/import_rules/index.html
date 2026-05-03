@@ -1,0 +1,51 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}ImportRules{% endblock %}
+{% block nav_items %}
+  <li><a href="/">Home</a></li>
+  <li><a href="/import_rules" aria-current="page">Import Rules</a></li>
+{% endblock %}
+
+{% block content %}
+<article>
+  <header class="no-margin">
+    <h1>Import Rules</h1>
+  </header>
+
+  <section>
+    {% include "import_rules/form.html" %}
+  </section>
+
+  <section>
+    <h2>All import_rules</h2>
+    {% if import_rules.is_empty() %}
+      <p>No import_rules exists.</p>
+    {% else %}
+      <figure>
+        <table>
+          <thead>
+            <tr>
+              <th>Priority</th>
+              <th>Account</th>
+              <th>Category</th>
+              <th>Match account</th>
+              <th>Match description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for import_rule in import_rules %}
+              <tr>
+                <td>{{ import_rule.priority }}</td>
+                <td class="nowrap"><a href="/import_rules/{{ import_rule.id }}">{{ import_rule.account_id | assigned_or("0") }}</a></td>
+                <td class="nowrap"><a href="/import_rules/{{ import_rule.id }}">{{ import_rule.category_id | assigned_or("0") }}</a></td>
+                <td>{{ import_rule.match_account | assigned_or("") }}</td>
+                <td>{{ import_rule.match_description | assigned_or("") }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </figure>
+    {% endif %}
+  </section>
+</article>
+{% endblock %}

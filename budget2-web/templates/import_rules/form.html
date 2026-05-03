@@ -1,0 +1,26 @@
+<details id="edit_import_rule_details" class="section" {% if form_open %}open{% endif %}>
+  <summary role="button" class="secondary">{% if is_editing %}Edit import rule{% else %}Add import rule{% endif %}
+  </summary>
+  <form method="post" action="/import_rules/{{ form.id }}">
+    <input type="hidden" name="id" value="{{ form.id }}">
+
+    <fieldset class="grid">
+      <label>
+        Match description
+        <input type="text" name="match_description" minlength="3" maxlength="64" required
+          value="{{ form.match_description | assigned_or("") }}" placeholder="e.g. Food, Travel, Utilities">
+        <small>Rule to match the imported transaction description.</small>
+      </label>
+      <label>
+        Priority
+        <input type="number" name="priority" min="0" required value="{{ form.priority }}">
+        <small>Lower numbers are applied first.</small>
+      </label>
+    </fieldset>
+
+    <div class="form-footer">
+      <a href="/import_rules" role="button" class="secondary">Cancel</a>
+      <button type="submit">{% if is_editing %}Save import rule{% else %}Add import rule{% endif %}</button>
+    </div>
+  </form>
+</details>

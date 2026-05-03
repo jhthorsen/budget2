@@ -1,9 +1,11 @@
 mod accounts;
 mod categories;
+mod import_rules;
 mod user;
 
 pub use accounts::*;
 pub use categories::*;
+pub use import_rules::*;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 pub use user::User;

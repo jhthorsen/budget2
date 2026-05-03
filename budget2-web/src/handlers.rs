@@ -2,6 +2,7 @@ mod accounts;
 mod auth;
 mod categories;
 mod home;
+mod import_rules;
 
 #[rustfmt::skip]
 pub fn routes(state: super::AppState) -> axum::Router {
@@ -14,5 +15,7 @@ pub fn routes(state: super::AppState) -> axum::Router {
     .route("/accounts/:id", axum::routing::get(accounts::edit).post(accounts::save))
     .route("/categories", axum::routing::get(categories::list))
     .route("/categories/:id", axum::routing::get(categories::edit).post(categories::save))
+    .route("/import_rules", axum::routing::get(import_rules::list))
+    .route("/import_rules/:id", axum::routing::get(import_rules::edit).post(import_rules::save))
     .with_state(state)
 }
