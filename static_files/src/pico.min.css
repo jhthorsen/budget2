@@ -9,7 +9,7 @@
 --pico-font-family:var(--pico-font-family-sans-serif);
 --pico-line-height:1.5;
 --pico-font-weight:400;
---pico-font-size:100%;
+--pico-font-size:16px;
 --pico-text-underline-offset:0.1rem;
 --pico-border-radius:0.25rem;
 --pico-border-width:0.0625rem;
@@ -41,11 +41,6 @@
 --pico-icon-close:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='rgb(136, 145, 164)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='6' x2='6' y2='18'%3E%3C/line%3E%3Cline x1='6' y1='6' x2='18' y2='18'%3E%3C/line%3E%3C/svg%3E");
 --pico-icon-loading:url("data:image/svg+xml,%3Csvg fill='none' height='24' width='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' %3E%3Cstyle%3E g %7B animation: rotate 2s linear infinite; transform-origin: center center; %7D circle %7B stroke-dasharray: 75,100; stroke-dashoffset: -5; animation: dash 1.5s ease-in-out infinite; stroke-linecap: round; %7D @keyframes rotate %7B 0%25 %7B transform: rotate(0deg); %7D 100%25 %7B transform: rotate(360deg); %7D %7D @keyframes dash %7B 0%25 %7B stroke-dasharray: 1,100; stroke-dashoffset: 0; %7D 50%25 %7B stroke-dasharray: 44.5,100; stroke-dashoffset: -17.5; %7D 100%25 %7B stroke-dasharray: 44.5,100; stroke-dashoffset: -62; %7D %7D %3C/style%3E%3Cg%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='rgb(136, 145, 164)' stroke-width='4' /%3E%3C/g%3E%3C/svg%3E") 
 }
-@media (min-width:576px){:host,:root{--pico-font-size:106.25%}}
-@media (min-width:768px){:host,:root{--pico-font-size:112.5%}}
-@media (min-width:1024px){:host,:root{--pico-font-size:118.75%}}
-@media (min-width:1280px){:host,:root{--pico-font-size:125%}}
-@media (min-width:1536px){:host,:root{--pico-font-size:131.25%}}
 a{--pico-text-decoration:underline}
 a.contrast,a.secondary{--pico-text-decoration:underline}
 small{--pico-font-size:0.875em}
@@ -74,15 +69,15 @@ details summary[role=button]:not(.outline)::after{filter:brightness(0) invert(1)
 :host(:not([data-theme=dark])),:root:not([data-theme=dark]),[data-theme=light]{
 color-scheme:light;
 --pico-background-color:#fff;
---pico-color:#373c44;
+--pico-color: oklch(71% 0.15 83 / 100%);
 --pico-text-selection-color:rgba(2, 154, 232, 0.25);
 --pico-muted-color:#646b79;
 --pico-muted-border-color:rgb(231, 234, 239.5);
---pico-primary:#0172ad;
+--pico-primary: oklch(56% 0.12 78 / 100%);
 --pico-primary-background:#0172ad;
 --pico-primary-border:var(--pico-primary-background);
 --pico-primary-underline:rgba(1, 114, 173, 0.5);
---pico-primary-hover:#015887;
+--pico-primary-hover: oklch(72% 0.15 86 / 100%);
 --pico-primary-hover-background:#02659a;
 --pico-primary-hover-border:var(--pico-primary-hover-background);
 --pico-primary-hover-underline:var(--pico-primary-hover);
@@ -184,15 +179,15 @@ color-scheme:light;
 [data-theme=dark]{
 color-scheme:dark;
 --pico-background-color:rgb(19, 22.5, 30.5);
---pico-color:#c2c7d0;
+--pico-color: oklch(90% 0.13 90 / 100%);
 --pico-text-selection-color:rgba(1, 170, 255, 0.1875);
 --pico-muted-color:#7b8495;
 --pico-muted-border-color:#202632;
---pico-primary:#01aaff;
+--pico-primary: oklch(79% 0.16 88 / 100%);
 --pico-primary-background:#0172ad;
 --pico-primary-border:var(--pico-primary-background);
 --pico-primary-underline:rgba(1, 170, 255, 0.5);
---pico-primary-hover:#79c0ff;
+--pico-primary-hover: oklch(72% 0.15 86 / 100%);
 --pico-primary-hover-background:#017fc0;
 --pico-primary-hover-border:var(--pico-primary-hover-background);
 --pico-primary-hover-underline:var(--pico-primary-hover);
@@ -314,11 +309,6 @@ main{display:block}
 body>footer,body>header,body>main{padding-block:var(--pico-block-spacing-vertical)}
 section{margin-bottom:var(--pico-block-spacing-vertical)}
 .container,.container-fluid{width:100%;margin-right:auto;margin-left:auto;padding-right:var(--pico-spacing);padding-left:var(--pico-spacing)}
-@media (min-width:576px){.container{max-width:510px;padding-right:0;padding-left:0}}
-@media (min-width:768px){.container{max-width:700px}}
-@media (min-width:1024px){.container{max-width:950px}}
-@media (min-width:1280px){.container{max-width:1200px}}
-@media (min-width:1536px){.container{max-width:1450px}}
 .grid{grid-column-gap:var(--pico-grid-column-gap);grid-row-gap:var(--pico-grid-row-gap);display:grid;grid-template-columns:1fr}
 @media (min-width:768px){.grid{grid-template-columns:repeat(auto-fit,minmax(0%,1fr))}}
 .grid>*{min-width:0}

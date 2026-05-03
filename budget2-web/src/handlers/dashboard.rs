@@ -4,6 +4,7 @@ use crate::helpers::*;
 #[template(path = "dashboard/index.html")]
 pub struct HomeTemplate {
     ctx: RequestContext,
+    user: model::User,
 }
 
 pub async fn get(
@@ -11,10 +12,10 @@ pub async fn get(
     ctx: RequestContext,
     session: tower_sessions::Session,
 ) -> HttpResult {
-    let Ok(_user) = get_current_user(&state.pool, &session).await else {
+    let Ok(user) = get_current_user(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
-    let page = HomeTemplate { ctx };
+    let page = HomeTemplate { ctx, user };
     Ok(Html(page.render()?).into_response())
 }

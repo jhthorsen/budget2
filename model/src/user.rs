@@ -66,6 +66,13 @@ impl User {
         Ok(Self { id, ..self })
     }
 
+    pub fn short_name(&self) -> &str {
+        let Some(short) = self.name.split_once(" ").or(self.email.split_once("@")) else {
+            return "";
+        };
+        short.0
+    }
+
     fn validate(&self) -> Result<(), sqlx::Error> {
         Ok(())
     }
