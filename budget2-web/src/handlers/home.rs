@@ -6,7 +6,7 @@ pub struct HomeTemplate {
     ctx: RequestContext,
 }
 
-pub async fn home(
+pub async fn get(
     State(state): State<AppState>,
     ctx: RequestContext,
     session: tower_sessions::Session,

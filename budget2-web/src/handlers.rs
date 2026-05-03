@@ -1,13 +1,15 @@
 mod accounts;
 mod auth;
 mod categories;
+mod dashboard;
 mod home;
 mod import_rules;
 
 #[rustfmt::skip]
 pub fn routes(state: super::AppState) -> axum::Router {
     axum::Router::new()
-    .route("/", axum::routing::get(home::home))
+    .route("/", axum::routing::get(home::get))
+    .route("/dashboard", axum::routing::get(dashboard::get))
     .route("/auth/callback", axum::routing::get(auth::callback))
     .route("/auth/login", axum::routing::get(auth::login))
     .route("/auth/logout", axum::routing::get(auth::logout))
