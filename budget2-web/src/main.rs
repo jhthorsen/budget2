@@ -1,5 +1,6 @@
 mod handlers;
 mod helpers;
+#[cfg(not(feature = "offline"))]
 mod oidc;
 mod request_context;
 
@@ -10,8 +11,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone)]
 pub struct AppState {
+    #[cfg(not(feature = "offline"))]
     pub oauth_client: oauth2::basic::BasicClient,
     pub pool: model::Pool,
+    #[cfg(not(feature = "offline"))]
     pub userinfo_url: String,
 }
 
@@ -58,12 +61,15 @@ async fn main() {
         .with_secure(matches!(env_or("SECURE_SESSION", "true").as_str(), "1" | "true"))
         .with_expiry(tower_sessions::Expiry::OnInactivity(time::Duration::days(7)));
 
+    #[cfg(not(feature = "offline"))]
     let (oauth_client, userinfo_url) = oidc::build_client()
         .await
         .unwrap_or_else(|err| panic!("Failed to create OAuth client: {err}"));
     let state = AppState {
+        #[cfg(not(feature = "offline"))]
         oauth_client,
         pool,
+        #[cfg(not(feature = "offline"))]
         userinfo_url,
     };
 

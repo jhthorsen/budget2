@@ -1,4 +1,5 @@
 use crate::helpers::*;
+#[cfg(not(feature = "offline"))]
 use oauth2::{AuthorizationCode, CsrfToken, Scope, TokenResponse, reqwest::async_http_client};
 use serde::Deserialize;
 
@@ -23,24 +24,37 @@ pub async fn callback(
     State(state): State<AppState>,
     session: tower_sessions::Session,
 ) -> HttpResult {
-    let token = state
-        .oauth_client
-        .exchange_code(AuthorizationCode::new(query.code))
-        .request_async(async_http_client)
-        .await
-        .map_err(|err| err.to_string())?;
+    #[cfg(not(feature = "offline"))]
+    let info: UserInfo = {
+        let token = state
+            .oauth_client
+            .exchange_code(AuthorizationCode::new(query.code))
+            .request_async(async_http_client)
+            .await
+            .map_err(|err| err.to_string())?;
 
-    let client = reqwest::Client::new();
-    let info: UserInfo = client
-        .get(&state.userinfo_url)
-        .bearer_auth(token.access_token().secret())
-        .send()
-        .await
-        .map_err(|err| err.to_string())?
-        .json()
-        .await
-        .map_err(|err| err.to_string())?;
+        let client = reqwest::Client::new();
+        client
+            .get(&state.userinfo_url)
+            .bearer_auth(token.access_token().secret())
+            .send()
+            .await
+            .map_err(|err| err.to_string())?
+            .json()
+            .await
+            .map_err(|err| err.to_string())?
+    };
 
+    #[cfg(feature = "offline")]
+    let info = UserInfo {
+        id: std::env::var("OFFLINE_OIDC_ID").unwrap(),
+        email: std::env::var("OFFLINE_OIDC_EMAIL").unwrap(),
+        name: std::env::var("OFFLINE_OIDC_NAME").ok(),
+    };
+
+    #[cfg(feature = "offline")]
+    let provider = query.code.to_string();
+    #[cfg(not(feature = "offline"))]
     let provider = state
         .oauth_client
         .auth_url()
@@ -79,6 +93,7 @@ pub async fn callback(
     Ok(axum::response::Redirect::to("/dashboard").into_response())
 }
 
+#[cfg(not(feature = "offline"))]
 pub async fn login(State(state): State<crate::AppState>) -> impl IntoResponse {
     let (auth_url, _csrf_token) = state
         .oauth_client
@@ -89,6 +104,11 @@ pub async fn login(State(state): State<crate::AppState>) -> impl IntoResponse {
         .url();
 
     axum::response::Redirect::to(auth_url.as_str())
+}
+
+#[cfg(feature = "offline")]
+pub async fn login() -> impl IntoResponse {
+    axum::response::Redirect::to("/auth/callback?code=offline&state=unsafe")
 }
 
 pub async fn logout(session: tower_sessions::Session) -> impl IntoResponse {
