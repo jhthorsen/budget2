@@ -2,8 +2,8 @@
 
 {% block title %}Categories{% endblock %}
 {% block nav_items %}
-  <li><a href="/">Home</a></li>
-  <li><a href="/categories" aria-current="page">Categories</a></li>
+<li><a href="/">Home</a></li>
+<li><a href="/categories" aria-current="page">Categories</a></li>
 {% endblock %}
 
 {% block content %}
@@ -19,26 +19,26 @@
   <section>
     <h2>All categories</h2>
     {% if categories.is_empty() %}
-      <p>No categories exists.</p>
+    <p>No categories exists.</p>
     {% else %}
-      <figure>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for category in categories %}
-              <tr>
-                <td class="nowrap"><a href="/categories/{{ category.id }}">{{ category.name }}</a></td>
-                <td>{{ category.description }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </figure>
+    <figure>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for category in categories %}
+          <tr>
+            <td class="nowrap"><a href="/categories/{{ category.id }}">{{ category.name }}</a></td>
+            <td>{{ category.description }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </figure>
     {% endif %}
   </section>
 </article>

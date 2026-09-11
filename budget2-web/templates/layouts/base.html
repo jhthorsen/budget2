@@ -1,143 +1,147 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <title>{% block title %}Index{% endblock %} - Budget App</title>
+  <title>{% block title %}Index{% endblock %} - Budget2</title>
   {% if ctx.csr == false %}
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="nonce" content="{{ ctx.nonce }}">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'nonce-{{ ctx.nonce }}'">
-    <meta name="ssr-headers" content="'x-nonce':'{{ ctx.nonce }}'">
-    <link rel="stylesheet" href="/static/pico@2.css">
-    <style>
-      :root {
-        --income-color: oklch(60% 0.14 145 / var(--transaction-type-opacity, 100%));
-        --expense-color: oklch(70% 0.2 20 / var(--transaction-type-opacity, 100%));
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="nonce" content="{{ ctx.nonce }}">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'nonce-{{ ctx.nonce }}'">
+  <meta name="ssr-headers" content="'x-nonce':'{{ ctx.nonce }}'">
+  <link rel="stylesheet" href="/static/pico@2.css">
+  <style>
+    :root {
+      --income-color: oklch(60% 0.14 145 / var(--transaction-type-opacity, 100%));
+      --expense-color: oklch(70% 0.2 20 / var(--transaction-type-opacity, 100%));
+    }
+
+    main>article {
+      background-color: transparent;
+      border-color: transparent;
+
+      &>header.no-margin {
+        margin-bottom: 0;
+      }
+    }
+
+    article {
+
+      footer,
+      header {
+        padding: var(--pico-block-spacing-vertical) var(--pico-block-spacing-horizontal);
+      }
+    }
+
+    dialog {
+      >article {
+        border-radius: 1rem;
       }
 
-      main > article {
-        background-color: transparent;
-        border-color: transparent;
-
-        & > header.no-margin {
-          margin-bottom: 0;
-        }
+      header button[rel="prev"] {
+        position: relative;
+        top: 0.4em;
       }
+    }
 
-      article {
-        footer,
-        header {
-          padding: var(--pico-block-spacing-vertical) var(--pico-block-spacing-horizontal);
-        }
+    td,
+    th {
+      background: transparent;
+
+      input:not([type=checkbox], [type=radio]),
+      select,
+      textarea {
+        --pico-border-width: 1px;
+        --pico-form-element-spacing-vertical: 0.2rem;
+        --pico-form-element-spacing-horizontal: 0.4rem;
+        margin: -0.1rem -0.4rem;
       }
+    }
 
-      dialog {
-        > article {
-          border-radius: 1rem;
-        }
+    details.section {
+      background-color: var(--pico-card-background-color);
+      border: var(--pico-spacing) solid var(--pico-card-border-color);
+      border-radius: var(--pico-border-radius);
+      margin-inline: calc(var(--pico-spacing) * -1);
 
-        header button[rel="prev"] {
-          position: relative;
-          top: 0.4em;
-        }
+      summary {
+        width: fit-content;
       }
+    }
 
-      td,
-      th {
-        background: transparent;
+    .flex-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--pico-grid-column-gap) var(--pico-grid-row-gap);
+      justify-content: center;
+    }
 
-        input:not([type=checkbox],[type=radio]),
-        select,
-        textarea {
-          --pico-border-width: 1px;
-          --pico-form-element-spacing-vertical: 0.2rem;
-          --pico-form-element-spacing-horizontal: 0.4rem;
-          margin: -0.1rem -0.4rem;
-        }
+    .form-footer {
+      display: flex;
+      justify-content: flex-start;
+      gap: var(--pico-grid-column-gap);
+
+      >*,
+      >button[type=submit] {
+        margin-bottom: var(--pico-spacing);
+        width: fit-content;
       }
+    }
 
-      details.section {
-        background-color: var(--pico-card-background-color);
-        border: var(--pico-spacing) solid var(--pico-card-border-color);
-        border-radius: var(--pico-border-radius);
-        margin-inline: calc(var(--pico-spacing) * -1);
+    .nowrap {
+      white-space: nowrap;
+    }
 
-        summary {
-          width: fit-content;
-        }
+    @media (max-width: 768px) {
+      .stat-value {
+        font-size: 1.5rem;
       }
-
-      .flex-wrap {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--pico-grid-column-gap) var(--pico-grid-row-gap);
-        justify-content: center;
-      }
-
-      .form-footer {
-        display: flex;
-        justify-content: flex-start;
-        gap: var(--pico-grid-column-gap);
-
-        > *,
-        > button[type=submit] {
-          margin-bottom: var(--pico-spacing);
-          width: fit-content;
-        }
-      }
-
-      .nowrap {
-        white-space: nowrap;
-      }
-
-      @media (max-width: 768px) {
-        .stat-value {
-          font-size: 1.5rem;
-        }
-      }
-    </style>
+    }
+  </style>
   {% endif %}
-</style>
+  </style>
 </head>
+
 <body>
   <nav class="container-fluid">
     <ul>
-      <li><strong><a href="/">💰 Budget App</a></strong></li>
+      <li><strong><a href="/">💰 Budget2</a></strong></li>
     </ul>
     <ul>
       {% block nav_items %}
-        <li><a href="/dashboard">Dashboard</a></li>
-        <li><a href="/add" target="partial">Add</a></li>
-        <li><a href="/import" target="partial">Import</a></li>
-        <li>
-          <a href="/settings">
-            {% match user.name.split(" ").next() %}
-              {% when Some with (first_name) %}
-                {{ first_name }}
-              {% when None %}
-                {{ user.name }}
-            {% endmatch %}
-          </a>
-        </li>
+      <li><a href="/dashboard">Dashboard</a></li>
+      <li><a href="/add" target="partial">Add</a></li>
+      <li><a href="/import" target="partial">Import</a></li>
+      <li>
+        <a href="/settings">
+          {% match user.name.split(" ").next() %}
+          {% when Some with (first_name) %}
+          {{ first_name }}
+          {% when None %}
+          {{ user.name }}
+          {% endmatch %}
+        </a>
+      </li>
       {% endblock %}
     </ul>
   </nav>
 
   <main class="{% if ctx.fluid %}container-fluid{% else %}container{% endif %}">
-      {% block content %}{% endblock %}
+    {% block content %}{% endblock %}
   </main>
 
   <dialog id="dialog"></dialog>
 
   {% if ctx.csr == false %}
-    <script nonce="{{ ctx.nonce }}" src="/static/idiomorph@1.js"></script>
-    <script nonce="{{ ctx.nonce }}" src="/static/ssr@1.js"></script>
-    <script nonce="{{ ctx.nonce }}">
-      function notification(message) {
-        return `<div class="notification" data-init="@debounce(@destroy(el), 3000)" data-swap="append:#notifications">${message}</div>`
-      }
-    </script>
+  <script nonce="{{ ctx.nonce }}" src="/static/idiomorph@1.js"></script>
+  <script nonce="{{ ctx.nonce }}" src="/static/ssr@1.js"></script>
+  <script nonce="{{ ctx.nonce }}">
+    function notification(message) {
+      return `<div class="notification" data-init="@debounce(@destroy(el), 3000)" data-swap="append:#notifications">${message}</div>`
+    }
+  </script>
   {% endif %}
   {% block extra_scripts %}{% endblock %}
 </body>
+
 </html>

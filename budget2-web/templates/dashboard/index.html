@@ -2,15 +2,15 @@
 
 {% block title %}ImportRules{% endblock %}
 {% block nav_items %}
-  <li><a href="/dashboard">Dashboard</a></li>
-  <li>
-    <details class="dropdown">
-      <summary>{{ user.short_name() }}</summary>
-      <ul>
-        <li><a href="/import_rules" aria-current="page">Import rules</a></li>
-      </ul>
-    </details>
-  </li>
+<li><a href="/dashboard">Dashboard</a></li>
+<li>
+  <details class="dropdown">
+    <summary>{{ user.short_name() }}</summary>
+    <ul>
+      <li><a href="/import_rules" aria-current="page">Import rules</a></li>
+    </ul>
+  </details>
+</li>
 {% endblock %}
 
 {% block content %}
@@ -18,4 +18,4 @@
   <header class="no-margin">
     <h1>Dashboard</h1>
   </header>
-{% endblock %}
+  {% endblock %}
