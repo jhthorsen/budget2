@@ -8,7 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="nonce" content="{{ ctx.nonce }}">
   <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'nonce-{{ ctx.nonce }}'">
-  <meta name="ssr-headers" content="'x-nonce':'{{ ctx.nonce }}'">
+  <meta name="fetch-headers" content="'x-nonce':'{{ ctx.nonce }}'">
   <link rel="stylesheet" href="/static/pico@2.css">
   <style>
     :root {
@@ -134,10 +134,10 @@
 
   {% if ctx.csr == false %}
   <script nonce="{{ ctx.nonce }}" src="/static/idiomorph@1.js"></script>
-  <script nonce="{{ ctx.nonce }}" src="/static/ssr@1.js"></script>
+  <script nonce="{{ ctx.nonce }}" src="/static/batsignal@1.js"></script>
   <script nonce="{{ ctx.nonce }}">
     function notification(message) {
-      return `<div class="notification" data-init="@debounce(@destroy(el), 3000)" data-swap="append:#notifications">${message}</div>`
+      return `<div class="notification" on:load="setTimeout(() => el.remove(), 3000)" data-swap="append:#notifications">${message}</div>`
     }
   </script>
   {% endif %}

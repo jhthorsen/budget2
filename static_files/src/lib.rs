@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Response};
 
 const IDIOMORPH_JS: &[u8] = include_bytes!("idiomorph.min.js");
 const PICO_CSS: &[u8] = include_bytes!("pico.min.css");
-const SSR_JS: &[u8] = include_bytes!("ssr.js");
+const BATSIGNAL_JS: &[u8] = include_bytes!("batsignal.js");
 
 pub async fn get(Path(name): Path<String>) -> Response {
     let Some((name, ext)) = name.split_once(".") else {
@@ -25,7 +25,7 @@ pub async fn get(Path(name): Path<String>) -> Response {
     match name {
         "idiomorph" => ([ct], IDIOMORPH_JS).into_response(),
         "pico" => ([ct], PICO_CSS).into_response(),
-        "ssr" => ([ct], SSR_JS).into_response(),
+        "batsignal" => ([ct], BATSIGNAL_JS).into_response(),
         _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
