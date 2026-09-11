@@ -24,11 +24,12 @@ async fn listen(app: axum::Router) -> Result<(), std::io::Error> {
         .parse::<u16>()
         .expect("PORT= must be an integer");
 
+    tracing::info!(%host, port, "Starting web server");
     let listener = tokio::net::TcpListener::bind(&format!("{host}:{port}"))
         .await
         .expect("To listen to port");
 
-    tracing::info!("Availablle at http://{}", listener.local_addr().unwrap());
+    tracing::info!(address = %listener.local_addr().unwrap(), "Web server ready");
     axum::serve(listener, app).await
 }
 
@@ -46,13 +47,19 @@ fn setup_tracing() {
 async fn main() {
     dotenv::dotenv().ok();
     setup_tracing();
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "Starting budget2-web");
 
-    let pool = model::build_pool(&env_or("DATABASE_URL", "sqlite:local/budget2.db"), true)
+    let db = env_or("DATABASE_URL", "sqlite:local/budget2.db");
+    tracing::info!("Connecting to database {db}");
+    let pool = model::build_pool(&db, true)
         .await
         .expect("Must be able to connect to database");
+    tracing::info!("Database connected and migrations applied");
 
     let session_store = SqliteStore::new(pool.clone());
+    tracing::info!("Migrating session store");
     session_store.migrate().await.expect("A session store");
+    tracing::info!("Session store ready");
 
     #[rustfmt::skip]
     let session_layer = tower_sessions::SessionManagerLayer::new(session_store)
@@ -62,9 +69,15 @@ async fn main() {
         .with_expiry(tower_sessions::Expiry::OnInactivity(time::Duration::days(7)));
 
     #[cfg(not(feature = "offline"))]
+    tracing::info!("Configuring OIDC client");
+    #[cfg(not(feature = "offline"))]
     let (oauth_client, userinfo_url) = oidc::build_client()
         .await
         .unwrap_or_else(|err| panic!("Failed to create OAuth client: {err}"));
+    #[cfg(not(feature = "offline"))]
+    tracing::info!("OIDC client ready");
+    #[cfg(feature = "offline")]
+    tracing::info!("Running with offline authentication");
     let state = AppState {
         #[cfg(not(feature = "offline"))]
         oauth_client,
@@ -79,6 +92,7 @@ async fn main() {
         .layer(session_layer)
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
+    tracing::info!("Application routes configured");
     listen(app)
         .await
         .expect("Should be able to start the server");
