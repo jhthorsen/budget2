@@ -25,7 +25,7 @@ authors = [
 macros = { path = "./macros" }
 model = { path = "./model" }
 static_files = { path = "./static_files" }
-askama = "0.15"
+askama = { version = "0.15", features = ["serde_json"] }
 axum = { version = "0.7", features = ["macros", "multipart"] }
 chrono = { version = "0.4", features = ["serde"] }
 csv = "1.3"

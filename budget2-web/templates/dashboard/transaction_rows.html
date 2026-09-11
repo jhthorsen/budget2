@@ -1,0 +1,23 @@
+{% set income = "income" %}
+{% for transaction in transactions %}
+<tr data-swap="append:#transactions_body">
+  <td class="nowrap">{{ transaction.processed_at }}</td>
+  <td>{{ transaction.description }}</td>
+  <td>{{ transaction.account_name }}</td>
+  <td>{{ transaction.category_name }}</td>
+  <td class="text-right nowrap {% if transaction.transaction_type == income %}income{% else %}expense{% endif %}">
+    {% if transaction.transaction_type == "income" %}+{% else %}−{% endif %}{{ transaction.formatted_amount() }}
+  </td>
+</tr>
+{% endfor %}
+{% if transactions.is_empty() || has_more_transactions == false %}
+<tr data-swap="append:#transactions_body" on:load="$('.transactions-loader', el => el.remove())">
+  <td colspan="5" class="muted">No more transactions match these filters.</td>
+</tr>
+{% else %}
+<tr data-swap="append:#transactions_body" class="transactions-loader"
+  on:load="$('.transactions-loader').remove();budgetObserver.observe(el)" on:destroy="budgetObserver.unobserve(el)"
+  on:intersect|once="ctx.fetch('/dashboard/transactions?offset={{ next_transaction_offset }}' + (location.search.length <= 1 ? '' : '&' + location.search.substr(1).replace(/(^|&)offset=\d+/, '')))">
+  <td colspan="5" class="muted text-center">Loading more transactions…</td>
+</tr>
+{% endif %}

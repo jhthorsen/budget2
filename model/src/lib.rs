@@ -1,6 +1,7 @@
 mod accounts;
 mod categories;
 mod import_rules;
+mod transactions;
 mod user;
 
 pub use accounts::*;
@@ -8,6 +9,7 @@ pub use categories::*;
 pub use import_rules::*;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+pub use transactions::*;
 pub use user::User;
 
 pub type DbResult<T> = Result<T, sqlx::Error>;

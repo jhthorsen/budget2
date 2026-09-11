@@ -1,21 +1,461 @@
 {% extends "layouts/base.html" %}
 
-{% block title %}ImportRules{% endblock %}
+{% block title %}Dashboard{% endblock %}
 {% block nav_items %}
-<li><a href="/dashboard">Dashboard</a></li>
+<li><a href="/dashboard" aria-current="page">Dashboard</a></li>
 <li>
   <details class="dropdown">
     <summary>{{ user.short_name() }}</summary>
-    <ul>
-      <li><a href="/import_rules" aria-current="page">Import rules</a></li>
+    <ul dir="rtl">
+      <li dir="ltr"><a href="/accounts">Accounts</a></li>
+      <li dir="ltr"><a href="/categories">Categories</a></li>
+      <li dir="ltr"><a href="/import_rules">Import rules</a></li>
+      <li dir="ltr"><a href="/auth/logout">Sign out</a></li>
     </ul>
   </details>
 </li>
 {% endblock %}
 
 {% block content %}
-<article>
-  <header class="no-margin">
-    <h1>Dashboard</h1>
-  </header>
-  {% endblock %}
+<article class="dashboard-page">
+  <section class="dashboard-stats grid" aria-label="Monthly summary">
+    <article>
+      <small class="muted" tabindex="0" data-tooltip="Total income matching the current filters">Income</small>
+      <strong class="stat-value income">{{ formatted_income }}</strong>
+    </article>
+    <article>
+      <small class="muted" tabindex="0" data-tooltip="Total expenses matching the current filters">Spent</small>
+      <strong class="stat-value expense">{{ formatted_expenses }}</strong>
+    </article>
+    <article>
+      <small class="muted" tabindex="0" data-tooltip="Number of transactions matching the current filters">Filtered
+        transactions</small>
+      <strong class="stat-value">{{ transaction_count }}</strong>
+    </article>
+    <article>
+      <small class="muted" tabindex="0" data-tooltip="Filtered transactions without a category">Uncategorized
+        items</small>
+      <strong class="stat-value">{{ uncategorized_count }}</strong>
+    </article>
+  </section>
+
+  <section class="breakdown-panel">
+    <h1 id="chart-title">{% if filters.account_id() == -1 %}Daily income and expenses by account{% else %}Daily income
+      and expenses by category in {% for account in transaction_filter_accounts %}{% if account.id ==
+      filters.account_id() %}{{ account.name }}{% endif %}{% endfor %}{% endif %}</h1>
+    <svg class="transactions-chart" width="100%" height="300" data-plot-left="90" data-plot-right="620" role="img"
+      aria-labelledby="chart-title">
+    </svg>
+    <p class="chart-line-key"><span class="income"></span>Income <span class="expense"></span>Expenses</p>
+    <fieldset id="chart_series_controls" class="series-controls" aria-label="Chart series">
+      {% for series in chart_series %}
+      <label style="--series-color: {{ series.color }}" data-series="{{ series.name }}"
+        data-chart-points="{{ series.points | json }}">
+        <input type="checkbox" checked data-chart-series="line-chart-series-{{ loop.index0 }}"> {{ series.name }}
+      </label>
+      {% endfor %}
+    </fieldset>
+    <span id="chart_tooltip" data-tooltip="" role="tooltip"></span>
+  </section>
+
+  <section aria-label="Transactions">
+    <form id="transaction-filters" action="/dashboard" method="get">
+      <figure>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Account</th>
+              <th>Category</th>
+              <th class="text-right nowrap">Amount</th>
+            </tr>
+            <tr class="transaction-filters">
+              <th>
+                <label data-tooltip="Filter by YYYY-MM or YYYY-MM-DD">
+                  <span class="visually-hidden">Filter by date</span>
+                  <input name="date" type="search" value="{{ filters.date }}" aria-label="Filter by month or date">
+                </label>
+              </th>
+              <th>
+                <label data-tooltip="Filter by description">
+                  <span class="visually-hidden">Filter by description</span>
+                  <input name="description" type="search" value="{{ filters.description }}"
+                    aria-label="Filter by description">
+                </label>
+              </th>
+              <th>
+                <label>
+                  <span class="visually-hidden">Filter by account</span>
+                  <select name="account" aria-label="Filter by account">
+                    <option value="">All accounts</option>
+                    {% for account in transaction_filter_accounts %}
+                    <option value="{{ account.id }}" {% if account.id==filters.account_id() %} selected{% endif %}>{{
+                      account.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+              </th>
+              <th>
+                <label>
+                  <span class="visually-hidden">Filter by category</span>
+                  <select name="category" aria-label="Filter by category">
+                    <option value="">All categories</option>
+                    {% for category in transaction_filter_categories %}
+                    <option value="{{ category.id }}" {% if category.id==filters.category_id() %} selected{% endif %}>{{
+                      category.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+              </th>
+              <th class="text-right nowrap">
+                <label data-tooltip="Filter by minium amount">
+                  <span class="visually-hidden">Minimum amount</span>
+                  <input id="filter-amount" name="amount" type="number" min="0" step="0.01" value="{{ filters.amount }}"
+                    aria-label="Minimum amount">
+                </label>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="transactions_body">
+            <tr class="transactions-loader" on:load="ctx.fetch(`/dashboard/transactions${location.search}`)">
+              <td colspan="5" class="muted">Loading transactions…</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+    </form>
+  </section>
+</article>
+
+<style>
+  .dashboard-page {
+    h1 {
+      margin-bottom: 1em;
+    }
+
+    table {
+
+      th:nth-child(2),
+      td:nth-child(2) {
+        width: 60%;
+      }
+    }
+
+    svg text {
+      font-size: 0.85rem;
+    }
+
+    .stat-value {
+      display: block;
+      font-size: clamp(1.75rem, 4vw, 2.35rem);
+    }
+
+    .transactions-chart {
+      display: block;
+      width: 100%;
+    }
+
+    .daily-baseline {
+      stroke: var(--pico-muted-border-color);
+      stroke-width: 1;
+    }
+
+    .amount-grid {
+      stroke: var(--pico-muted-border-color);
+      stroke-width: 1;
+      stroke-dasharray: 2 4;
+    }
+
+    .chart-point {
+      opacity: 0.5;
+    }
+
+    .chart-point.is-active,
+    .chart-point:focus {
+      opacity: 1;
+    }
+
+    .series-line {
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .chart-line[data-kind="expense"] .series-line {
+      stroke-dasharray: 4 3;
+    }
+
+    .chart-line-key,
+    .series-controls {
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin: 1rem;
+
+      label {
+        color: var(--series-color);
+        white-space: nowrap;
+      }
+    }
+
+    .chart-line-key {
+      color: var(--pico-muted-color);
+      margin: 0.5rem 0;
+
+      span {
+        width: 1.5rem;
+        border-top: 1px solid currentColor;
+      }
+
+      .expense-line-key {
+        border-top-style: dashed;
+        margin-left: 0.5rem;
+      }
+    }
+
+    .series-controls {}
+  }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script nonce="{{ ctx.nonce }}">
+  (() => {
+    const form = document.querySelector("#transaction-filters");
+    if (!form) return;
+
+    let submitTimer;
+    for (const filter of form.querySelectorAll("input, select")) {
+      filter.addEventListener("change", () => form.requestSubmit());
+      filter.addEventListener("input", () => {
+        clearTimeout(submitTimer);
+        submitTimer = setTimeout(() => form.requestSubmit(), 350);
+      });
+    }
+
+    const chart = document.querySelector(".transactions-chart");
+    const tooltip = document.getElementById("chart_tooltip");
+    if (!chart || !tooltip) return;
+
+    const NS = "http://www.w3.org/2000/svg";
+    const HEIGHT = Number(chart.getAttribute("height"));
+    const TOP_PADDING = 12;
+    const AXIS_OFFSET = 20;
+    const BOTTOM_PADDING = 12;
+    const LEFT = Number(chart.dataset.plotLeft);
+    const RIGHT = Number(chart.dataset.plotRight);
+    const WIDTH = RIGHT - LEFT;
+    const AXIS_Y = HEIGHT - BOTTOM_PADDING;
+    const PLOT_BOTTOM = AXIS_Y - AXIS_OFFSET;
+    const PLOT_HEIGHT = PLOT_BOTTOM - TOP_PADDING;
+    const controls = document.getElementById("chart_series_controls");
+    const series = [...controls.querySelectorAll("label")].map(label => ({
+      name: label.dataset.series,
+      color: label.style.getPropertyValue("--series-color"),
+      points: JSON.parse(label.dataset.chartPoints),
+    }));
+    const pointsData = series.flatMap(item => item.points);
+    const days = [...new Set(pointsData.map(point => point.day))].sort();
+    const maximum = Math.max(1, ...pointsData.map(point => Math.abs(point.amount)));
+    const lastIndex = Math.max(1, days.length - 1);
+
+    const element = (name, attributes = {}, content) => {
+      const element = document.createElementNS(NS, name);
+      for (const [attribute, value] of Object.entries(attributes)) element.setAttribute(attribute, value);
+      if (content !== undefined) element.textContent = content;
+      return element;
+    };
+    const append = (parent, name, attributes, content) => parent.appendChild(element(name, attributes, content));
+
+    chart.replaceChildren();
+
+    for (const fraction of [1, 0.75, 0.5, 0.25, 0]) {
+      const y = TOP_PADDING + PLOT_HEIGHT * (1 - fraction);
+      append(chart, "line", {class: "amount-grid", x1: LEFT, y1: y, x2: RIGHT, y2: y});
+      append(chart, "text", {class: "muted", x: LEFT - 8, y, dy: "0.35em", "text-anchor": "end"}, (maximum * fraction).toFixed(2));
+    }
+    append(chart, "line", {class: "daily-baseline", x1: LEFT, y1: TOP_PADDING, x2: LEFT, y2: PLOT_BOTTOM});
+    append(chart, "line", {class: "daily-baseline", x1: LEFT, y1: PLOT_BOTTOM, x2: RIGHT, y2: PLOT_BOTTOM});
+
+    for (const [seriesIndex, {name, color, points}] of series.entries()) {
+      const group = element("g", {
+        id: "line-chart-series-" + seriesIndex,
+        class: "chart-series",
+        fill: color,
+      });
+      for (const kind of ["income", "expense"]) {
+        const daily = new Map(points.filter(point => point.transaction_type === kind).map(point => [point.day, point]));
+        const coordinates = days.map((day, index) => {
+          const amount = daily.get(day)?.amount || 0;
+          return {
+            x: LEFT + WIDTH * index / lastIndex,
+            y: TOP_PADDING + PLOT_HEIGHT * (1 - amount / maximum),
+            tooltip: day + " · " + name + " · " + kind + ": " + amount.toFixed(2),
+          };
+        });
+        const line = element("g", {class: "chart-line", "data-kind": kind});
+        const path = element("path", {
+          class: "series-line",
+          d: coordinates.map((point, index) => (index ? "L" : "M") + point.x.toFixed(1) + "," + point.y.toFixed(1)).join(""),
+          stroke: color,
+        });
+        line.appendChild(path);
+        for (const point of coordinates) line.appendChild(element("circle", {
+          class: "chart-point", cx: point.x, cy: point.y, r: 2.5, tabindex: 0,
+          "aria-label": point.tooltip, "data-chart-tooltip": point.tooltip,
+        }));
+        group.appendChild(line);
+      }
+      chart.appendChild(group);
+    }
+
+    if (!series.length) {
+      append(chart, "text", {class: "muted", x: 0, y: 56}, "No transactions to display.");
+    } else {
+      const labelCount = Math.min(days.length, 7);
+      for (let index = 0; index < labelCount; index++) {
+        const dayIndex = labelCount === 1 ? 0 : Math.round(index * (days.length - 1) / (labelCount - 1));
+        const x = LEFT + WIDTH * dayIndex / lastIndex;
+        append(chart, "text", {
+          class: "muted daily-label", x, y: AXIS_Y, "text-anchor": index === 0 ? "start" : index + 1 === labelCount ? "end" : "middle",
+        }, days[dayIndex]);
+      }
+    }
+
+    const points = [...chart.querySelectorAll(".chart-point")];
+    const lines = [...chart.querySelectorAll(".chart-line")];
+    const controlInputs = [...controls.querySelectorAll("[data-chart-series]")];
+    let activePoint;
+    let previewSeries = null;
+
+    function updateVisibility() {
+      for (const input of controlInputs) {
+        const series = document.getElementById(input.dataset.chartSeries);
+        const visible = previewSeries ? series.id === previewSeries : input.checked;
+        series.style.display = visible ? "" : "none";
+      }
+      for (const line of lines) {
+        line.style.opacity = activePoint && line !== activePoint.parentElement ? "0.2" : "1";
+      }
+    }
+
+    const pointPositions = points.map(point => ({
+      point,
+      fraction: (point.cx.baseVal.value - LEFT) / WIDTH,
+    }));
+    const dateLabels = [...chart.querySelectorAll(".daily-label")].map(label => ({
+      label,
+      fraction: (Number(label.getAttribute("x")) - LEFT) / WIDTH,
+    }));
+    const gridLines = [...chart.querySelectorAll("line")]
+      .filter(line => Number(line.getAttribute("x2")) === RIGHT);
+    const seriesPaths = lines.map(series => ({
+      path: series.querySelector(".series-line"),
+      points: [...series.querySelectorAll(".chart-point")],
+    }));
+
+    function resizeChart() {
+      const width = chart.getBoundingClientRect().width;
+      if (!width) return;
+      const right = Math.max(LEFT + 1, width - 20);
+      const plotWidth = right - LEFT;
+      for (const {point, fraction} of pointPositions) point.setAttribute("cx", LEFT + fraction * plotWidth);
+      for (const {path, points} of seriesPaths) {
+        path.setAttribute("d", points.map((point, index) =>
+          `${index ? "L" : "M"}${point.cx.baseVal.value},${point.cy.baseVal.value}`
+        ).join(""));
+      }
+      for (const line of gridLines) line.setAttribute("x2", right);
+      const count = Math.min(dateLabels.length, Math.max(2, Math.floor(plotWidth / 90) + 1));
+      const visible = new Set(Array.from({length: count}, (_, index) =>
+        count === 1 ? 0 : Math.round(index * (dateLabels.length - 1) / (count - 1))
+      ));
+      dateLabels.forEach(({label, fraction}, index) => {
+        label.setAttribute("x", LEFT + fraction * plotWidth);
+        label.style.display = visible.has(index) ? "" : "none";
+      });
+      setTooltip();
+    }
+
+    function setTooltip(point) {
+      activePoint?.classList.remove("is-active");
+      activePoint = point;
+      updateVisibility();
+      tooltip.hidden = !point;
+      if (!point) return;
+      point.classList.add("is-active");
+      tooltip.dataset.tooltip = point.dataset.chartTooltip;
+      tooltip.setAttribute("aria-label", point.dataset.chartTooltip);
+      tooltip.hidden = false;
+
+      // Position the HTML tooltip using the SVG's actual screen coordinates.
+      const position = new DOMPoint(point.cx.baseVal.value, point.cy.baseVal.value)
+        .matrixTransform(point.getScreenCTM());
+      tooltip.dataset.placement = position.y < 100 ? "bottom" : "top";
+      const bubble = getComputedStyle(tooltip, "::before");
+      const width = parseFloat(bubble.width) + parseFloat(bubble.paddingLeft) + parseFloat(bubble.paddingRight);
+      const margin = Math.min(width / 2 + 12, window.innerWidth / 2);
+      tooltip.style.left = `${Math.max(margin, Math.min(window.innerWidth - margin, position.x))}px`;
+      tooltip.style.top = `${position.y + (position.y < 100 ? 8 : -8)}px`;
+    }
+
+    chart.addEventListener("pointermove", event => {
+      const matrix = chart.getScreenCTM();
+      if (!matrix) return;
+      let closest;
+      let distance = 20;
+      for (const point of points) {
+        if (point.closest(".chart-series").style.display === "none") continue;
+        const position = new DOMPoint(point.cx.baseVal.value, point.cy.baseVal.value).matrixTransform(matrix);
+        const candidate = Math.hypot(event.clientX - position.x, event.clientY - position.y);
+        if (candidate < distance) {
+          closest = point;
+          distance = candidate;
+        }
+      }
+      setTooltip(closest);
+    });
+    chart.addEventListener("pointerleave", () => setTooltip());
+    chart.addEventListener("focusin", event => {
+      if (event.target.matches(".chart-point")) setTooltip(event.target);
+    });
+    chart.addEventListener("focusout", () => setTooltip());
+    chart.addEventListener("keydown", event => {
+      if (event.key === "Escape") setTooltip();
+    });
+
+    // Batsignal dispatches destroy when navigating away from this dashboard.
+    const lifecycle = new AbortController();
+    const resizeObserver = new ResizeObserver(resizeChart);
+    resizeObserver.observe(chart);
+    chart.addEventListener("destroy", () => {
+      resizeObserver.disconnect();
+      lifecycle.abort();
+    }, {once: true});
+    window.addEventListener("scroll", () => setTooltip(), {capture: true, passive: true, signal: lifecycle.signal});
+    resizeChart();
+
+    for (const input of controlInputs) {
+      const label = input.closest("label");
+      label.addEventListener("pointerenter", event => {
+        if (event.pointerType === "touch") return;
+        previewSeries = input.dataset.chartSeries;
+        setTooltip();
+      });
+      const clearPreview = () => {
+        previewSeries = null;
+        setTooltip();
+      };
+      label.addEventListener("pointerleave", clearPreview);
+      label.addEventListener("pointercancel", clearPreview);
+      input.addEventListener("change", () => setTooltip());
+    }
+    updateVisibility();
+  })();
+</script>
+{% endblock %}

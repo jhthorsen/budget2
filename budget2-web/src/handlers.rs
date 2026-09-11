@@ -10,6 +10,7 @@ pub fn routes(state: super::AppState) -> axum::Router {
     axum::Router::new()
     .route("/", axum::routing::get(home::get))
     .route("/dashboard", axum::routing::get(dashboard::get))
+    .route("/dashboard/transactions", axum::routing::get(dashboard::transactions))
     .route("/auth/callback", axum::routing::get(auth::callback))
     .route("/auth/login", axum::routing::get(auth::login))
     .route("/auth/logout", axum::routing::get(auth::logout))

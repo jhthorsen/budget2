@@ -44,6 +44,23 @@
       }
     }
 
+    label[data-tooltip] {
+      text-decoration: none !important;
+      border-bottom: 0 !important;
+    }
+
+    tr.table-loader {
+      display: none;
+
+      &::first-child::last-child {
+        display: table-row;
+      }
+
+      td {
+        text-align: center;
+      }
+    }
+
     td,
     th {
       background: transparent;
@@ -69,6 +86,10 @@
       }
     }
 
+    nav details.dropdown {
+      display: inline-block;
+    }
+
     .flex-wrap {
       display: flex;
       flex-wrap: wrap;
@@ -92,9 +113,51 @@
       white-space: nowrap;
     }
 
-    @media (max-width: 768px) {
-      .stat-value {
-        font-size: 1.5rem;
+    .income {
+      color: var(--income-color);
+    }
+
+    .expense {
+      color: var(--expense-color);
+    }
+
+    .muted {
+      color: var(--pico-muted-color);
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .visually-hidden {
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      height: 1px;
+      overflow: hidden;
+      position: absolute;
+      white-space: nowrap;
+      width: 1px;
+    }
+
+    #chart_tooltip {
+      position: fixed;
+      width: 0;
+      height: 0;
+      border: 0;
+      pointer-events: none;
+      z-index: 100;
+
+      &:not([hidden])::before,
+      &:not([hidden])::after {
+        opacity: 1;
+        animation: none;
+      }
+
+      &::before {
+        width: max-content;
+        max-width: min(24rem, calc(100vw - 24px));
+        white-space: normal;
+        overflow-wrap: anywhere;
       }
     }
   </style>
@@ -133,13 +196,19 @@
   <dialog id="dialog"></dialog>
 
   {% if ctx.csr == false %}
-  <script nonce="{{ ctx.nonce }}" src="/static/idiomorph@1.js"></script>
-  <script nonce="{{ ctx.nonce }}" src="/static/batsignal@1.js"></script>
   <script nonce="{{ ctx.nonce }}">
+    window.budgetObserver = (window.budgetObserver || new IntersectionObserver(entries => {
+      for (const {isIntersecting, target} of entries) {
+        if (isIntersecting) target.dispatchEvent(new CustomEvent('intersect', {bubbles: false}))
+      }
+    }))
+
     function notification(message) {
       return `<div class="notification" on:load="setTimeout(() => el.remove(), 3000)" data-swap="append:#notifications">${message}</div>`
     }
   </script>
+  <script nonce="{{ ctx.nonce }}" src="/static/idiomorph@1.js"></script>
+  <script nonce="{{ ctx.nonce }}" src="/static/batsignal@1.js"></script>
   {% endif %}
   {% block extra_scripts %}{% endblock %}
 </body>
