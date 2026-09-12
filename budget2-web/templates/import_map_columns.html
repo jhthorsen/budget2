@@ -1,0 +1,78 @@
+<dialog id="dialog" open data-swap="morph:#dialog">
+  <article>
+    <header>
+      <h2>Map CSV columns</h2>
+    </header>
+    <form id="import_form" action="/import/process" method="post" data-history="none">
+      <input type="hidden" name="file_id" value="{{ file_id }}">
+      <div class="import-grid">
+        <label>Date
+          <select name="date_column" required>
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == date_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+          </select>
+        </label>
+        {% if !date_formats.is_empty() %}
+        <label>Date format
+          <select name="date_format">
+            {% for format in date_formats %}<option value="{{ format.value }}">{{ format.label }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endif %}
+        <label>Description
+          <select name="description_column" required>
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == description_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Income amount
+          <select name="income_column">
+            <option value="">None</option>
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == income_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Expense amount
+          <select name="expense_column">
+            <option value="">None</option>
+          {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == expense_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Account column (optional)
+          <select name="account_column">
+            <option value="">Use import rules</option>
+          {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == account_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Fixed account name (optional)
+          <input name="account_fixed_name" placeholder="Checking">
+        </label>
+        <label>Category column (optional)
+          <select name="category_column">
+            <option value="">Use import rules</option>
+          {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == category_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Currency multiplier
+          <input name="currency_multiplier" type="number" step="any" value="1">
+        </label>
+      </div>
+    </form>
+    <footer>
+      <button type="submit" form="import_form">Import transactions</button>
+      <button type="button" class="secondary" on:load on:click="el.closest('dialog').close()">Cancel</button>
+    </footer>
+    <small>Import rules fill missing account and category values.</small>
+  </article>
+</dialog>
+
+<style>
+  #dialog .import-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--pico-form-element-spacing-vertical) var(--pico-grid-column-gap);
+  }
+
+  @media (max-width: 600px) {
+    #dialog .import-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

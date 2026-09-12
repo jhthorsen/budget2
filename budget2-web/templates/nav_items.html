@@ -1,11 +1,20 @@
 <li><a href="/">Dashboard</a></li>
 <li>
   <details class="dropdown">
-    <summary>Manage</summary>
-    <ul>
+    {% if user is defined %}
+    <summary>{{ user.short_name() }}</summary>
+    <ul dir="rtl">
+      <li><a href="/import" data-history="none" on:load on:click="el.closest('details').open = false">Import</a></li>
       <li><a href="/accounts">Accounts</a></li>
       <li><a href="/categories">Categories</a></li>
-      <li><a href="/import_rules">Import Rules</a></li>
+      <li><a href="/import_rules">Rules</a></li>
+      <li><a href="/auth/logout">Sign out</a></li>
     </ul>
+    {% else %}
+    <summary></summary>
+    <ul dir="rtl">
+      <li><a href="/auth/login">Sign in</a></li>
+    </ul>
+    {% endif %}
   </details>
 </li>
