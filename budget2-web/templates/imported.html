@@ -1,0 +1,23 @@
+<dialog id="dialog" open data-swap="morph:#dialog">
+  <article>
+    <header>
+      <button form="dialog" aria-label="Close" rel="prev"></button>
+      <h2>Import results</h2>
+    </header>
+    <p>Imported {{ result.successful }} of {{ result.total_rows }} rows.</p>
+    {% if !result.errors.is_empty() %}
+    <h3>Rows with errors</h3>
+    <figure>
+      <table>
+        <thead><tr><th>Row</th><th>Error</th><th>Data</th></tr></thead>
+        <tbody>
+          {% for error in result.errors %}
+          <tr><td>{{ error.row_number }}</td><td>{{ error.error }}</td><td>{{ error.row_data }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </figure>
+    {% endif %}
+    <footer><a href="/dashboard" role="button">Close</a><a href="/import" role="button" class="secondary">Import another</a></footer>
+  </article>
+</dialog>

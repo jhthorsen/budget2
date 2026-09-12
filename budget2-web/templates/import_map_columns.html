@@ -1,0 +1,53 @@
+<dialog id="dialog" open data-swap="morph:#dialog">
+  <article>
+    <header>
+      <button form="dialog" aria-label="Close" rel="prev"></button>
+      <h2>Map CSV columns</h2>
+    </header>
+    <form id="import_form" action="/import/process" method="post">
+      <input type="hidden" name="file_id" value="{{ file_id }}">
+      <label>Date
+        <select name="date_column" required>
+          {% for header in headers %}<option value="{{ header }}">{{ header }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Description
+        <select name="description_column" required>
+          {% for header in headers %}<option value="{{ header }}">{{ header }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Income amount
+        <select name="income_column">
+          <option value="">None</option>
+          {% for header in headers %}<option value="{{ header }}">{{ header }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Expense amount
+        <select name="expense_column">
+          <option value="">None</option>
+          {% for header in headers %}<option value="{{ header }}">{{ header }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Account column (optional)
+        <select name="account_column">
+          <option value="">Use import rules</option>
+          {% for header in headers %}<option value="{{ header }}">{{ header }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Fixed account name (optional)
+        <input name="account_fixed_name" placeholder="Checking">
+      </label>
+      <label>Category column (optional)
+        <select name="category_column">
+          <option value="">Use import rules</option>
+          {% for header in headers %}<option value="{{ header }}">{{ header }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Currency multiplier
+        <input name="currency_multiplier" type="number" step="any" value="1">
+      </label>
+      <button type="submit">Import transactions</button>
+    </form>
+    <small>Import rules fill missing account and category values.</small>
+  </article>
+</dialog>

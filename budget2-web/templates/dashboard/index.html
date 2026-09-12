@@ -1,20 +1,7 @@
 {% extends "layouts/base.html" %}
 
 {% block title %}Dashboard{% endblock %}
-{% block nav_items %}
-<li><a href="/dashboard" aria-current="page">Dashboard</a></li>
-<li>
-  <details class="dropdown">
-    <summary>{{ user.short_name() }}</summary>
-    <ul dir="rtl">
-      <li dir="ltr"><a href="/accounts">Accounts</a></li>
-      <li dir="ltr"><a href="/categories">Categories</a></li>
-      <li dir="ltr"><a href="/import_rules">Import rules</a></li>
-      <li dir="ltr"><a href="/auth/logout">Sign out</a></li>
-    </ul>
-  </details>
-</li>
-{% endblock %}
+{% block nav_items %}{% include "nav_items.html" %}{% endblock %}
 
 {% block content %}
 <article class="dashboard-page">
@@ -132,6 +119,17 @@
   .dashboard-page {
     h1 {
       margin-bottom: 1em;
+    }
+
+    .dashboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--pico-spacing);
+
+      h1 {
+        margin-bottom: 0;
+      }
     }
 
     table {

@@ -3,6 +3,7 @@ mod auth;
 mod categories;
 mod dashboard;
 mod home;
+mod import;
 mod import_rules;
 
 #[rustfmt::skip]
@@ -11,6 +12,9 @@ pub fn routes(state: super::AppState) -> axum::Router {
     .route("/", axum::routing::get(home::get))
     .route("/dashboard", axum::routing::get(dashboard::get))
     .route("/dashboard/transactions", axum::routing::get(dashboard::transactions))
+    .route("/import", axum::routing::get(import::upload_form))
+    .route("/import/upload", axum::routing::post(import::upload_then_map_columns))
+    .route("/import/process", axum::routing::post(import::import_uploaded))
     .route("/auth/callback", axum::routing::get(auth::callback))
     .route("/auth/login", axum::routing::get(auth::login))
     .route("/auth/logout", axum::routing::get(auth::logout))

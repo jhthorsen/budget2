@@ -1,0 +1,15 @@
+<dialog id="dialog" open data-swap="morph:#dialog">
+  <article>
+    <header>
+      <button form="dialog" aria-label="Close" rel="prev"></button>
+      <h2>Import transactions</h2>
+    </header>
+    <p>Upload a CSV file, then map its columns to your transactions.</p>
+    <form id="import_form" action="/import/upload" method="post" enctype="multipart/form-data">
+      <label for="csv_file">CSV file</label>
+      <input id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required>
+      <button type="submit">Choose columns</button>
+    </form>
+    <small>Required: a header row, date, description, and income or expense amount column.</small>
+  </article>
+</dialog>
