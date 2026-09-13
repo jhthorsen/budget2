@@ -363,8 +363,9 @@ mod tests {
         let pool = crate::build_pool("sqlite::memory:", true).await.unwrap();
         for statement in [
             "insert into users (id, email, name, oauth_provider, oauth_id) values (1, 'chart@example.com', 'Chart', 'test', 'chart')",
-            "insert into accounts (id, user_id, name) values (1, 1, 'Checking')",
-            "insert into categories (id, name) values (1, 'Travel')",
+            "insert into households (id, name) values (1, 'Family')",
+            "insert into accounts (id, user_id, household_id, name) values (1, 1, 1, 'Checking')",
+            "insert into categories (id, household_id, name) values (1, 1, 'Travel')",
             "insert into transactions (user_id, account_id, category_id, type, amount, original_amount, original_currency, description, processed_at) values
              (1, 1, 1, 'expense', 12.34, 10, 'USD', 'A', '2026-01-01'),
              (1, 1, 1, 'expense', 10, 10, 'USD', 'B', '2026-01-01'),

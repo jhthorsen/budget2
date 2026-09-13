@@ -51,10 +51,17 @@ async fn main() {
 
     let db = env_or("DATABASE_URL", "sqlite:local/budget2.db");
     tracing::info!("Connecting to database {db}");
-    let pool = model::build_pool(&db, true)
+    let skip_migrations = matches!(
+        env_or("SKIP_MIGRATIONS", "false").to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes"
+    );
+    if skip_migrations {
+        tracing::warn!("Skipping database migrations because SKIP_MIGRATIONS is enabled");
+    }
+    let pool = model::build_pool(&db, !skip_migrations)
         .await
         .expect("Must be able to connect to database");
-    tracing::info!("Database connected and migrations applied");
+    tracing::info!(migrations = !skip_migrations, "Database connected");
 
     let session_store = SqliteStore::new(pool.clone());
     tracing::info!("Migrating session store");
