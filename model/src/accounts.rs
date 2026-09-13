@@ -8,24 +8,35 @@ pub struct Account {
     pub name: String,
     pub friendly: String,
     pub description: String,
+    #[serde(default)]
+    pub owner_name: String,
+    #[serde(default)]
+    pub owner_email: String,
 }
 
 impl Account {
-    pub async fn all(pool: &Pool) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn all(pool: &Pool, household_id: i64) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Self,
-            r#"select id as 'id!', user_id as 'user_id!', friendly, name, description
-            from accounts
-            order by name"#,
+            r#"select a.id as 'id!', a.user_id as 'user_id!', a.friendly, a.name, a.description,
+            u.name as 'owner_name!', u.email as 'owner_email!'
+            from accounts a join users u on u.id = a.user_id
+            where a.household_id = ?
+            order by a.name"#,
+            household_id,
         )
         .fetch_all(pool)
         .await
     }
 
-    pub async fn delete(&self, pool: &Pool) -> Result<(), sqlx::Error> {
-        sqlx::query!("delete from accounts where id = ?", self.id)
-            .execute(pool)
-            .await?;
+    pub async fn delete(&self, pool: &Pool, household_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "delete from accounts where id = ? and household_id = ?",
+            self.id,
+            household_id
+        )
+        .execute(pool)
+        .await?;
         Ok(())
     }
 
@@ -33,19 +44,25 @@ impl Account {
         self.id > 0
     }
 
-    pub async fn load(pool: &Pool, id: i64) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn load(
+        pool: &Pool,
+        id: i64,
+        household_id: i64,
+    ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Self,
-            r#"select id as 'id!', user_id as 'user_id!', friendly, name, description
-            from accounts
-            where id = ?"#,
+            r#"select a.id as 'id!', a.user_id as 'user_id!', a.friendly, a.name, a.description,
+            u.name as 'owner_name!', u.email as 'owner_email!'
+            from accounts a join users u on u.id = a.user_id
+            where a.id = ? and a.household_id = ?"#,
             id,
+            household_id,
         )
         .fetch_optional(pool)
         .await
     }
 
-    pub async fn save(self, pool: &Pool) -> Result<Self, sqlx::Error> {
+    pub async fn save(self, pool: &Pool, household_id: i64) -> Result<Self, sqlx::Error> {
         self.validate()?;
 
         let name = self.name.trim();
@@ -56,20 +73,21 @@ impl Account {
 
         let id = if self.in_storage() {
             sqlx::query!(
-                "update accounts set user_id = ?, name = ?, friendly = ?, description = ? where id = ?",
-                self.user_id,
+                "update accounts set name = ?, friendly = ?, description = ? where id = ? and household_id = ?",
                 name,
                 friendly,
                 self.description,
                 self.id,
+                household_id,
             )
             .execute(pool)
             .await?;
             self.id
         } else {
             sqlx::query!(
-                "insert into accounts (user_id, name, friendly, description) values (?, ?, ?, ?)",
+                "insert into accounts (user_id, household_id, name, friendly, description) values (?, ?, ?, ?, ?)",
                 self.user_id,
+                household_id,
                 name,
                 friendly,
                 self.description,

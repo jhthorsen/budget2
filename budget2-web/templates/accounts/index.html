@@ -1,7 +1,6 @@
 {% extends "layouts/base.html" %}
 
 {% block title %}Accounts{% endblock %}
-{% block nav_items %}{% include "nav_items.html" %}{% endblock %}
 
 {% block content %}
 <article>
@@ -28,6 +27,7 @@
           <tr>
             <th>Name</th>
             <th>Friendly name</th>
+            <th>Owner</th>
             <th>Description</th>
           </tr>
         </thead>
@@ -36,6 +36,8 @@
           <tr>
             <td class="nowrap"><a href="/accounts/{{ account.id }}">{{ account.name }}</a></td>
             <td>{{ account.friendly }}</td>
+            <td>{% if account.owner_name.is_empty() %}{{ account.owner_email }}{% else %}{{ account.owner_name }}{%
+              endif %}</td>
             <td>{{ account.description }}</td>
           </tr>
           {% endfor %}

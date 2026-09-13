@@ -1,0 +1,53 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Household{% endblock %}
+
+{% block content %}
+<article>
+  <header>
+    <h1>Household members</h1>
+  </header>
+  <figure>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>{% if is_manager %}<th>Change role</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for member in members %}
+        <tr>
+          <td>{{ member.name }}</td>
+          <td>{{ member.email }}</td>
+          <td>{{ member.role }}</td>
+          {% if is_manager %}
+          <td>
+            <form method="post" action="/household/role">
+              <input type="hidden" name="user_id" value="{{ member.user_id }}">
+              <select name="role" onchange="this.form.submit()">
+                <option value="member" {% if member.role == model::Role::Member %}selected{% endif %}>Member</option>
+                <option value="assistant" {% if member.role == model::Role::Assistant %}selected{% endif %}>Assistant</option>
+                <option value="manager" {% if member.role == model::Role::Manager %}selected{% endif %}>Manager</option>
+              </select>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </figure>
+  <h2>Roles</h2>
+  <dl>
+    <dt>Manager</dt>
+    <dd>Can view all household transactions, import CSV files, manage household data, and change member roles.</dd>
+    <dt>Assistant</dt>
+    <dd>Can import CSV files for any household account and view the transactions they imported.</dd>
+    <dt>Member</dt>
+    <dd>Can only view transactions linked to their own accounts.</dd>
+  </dl>
+  <small>Households must always have at least one manager.</small>
+</article>
+{% endblock %}

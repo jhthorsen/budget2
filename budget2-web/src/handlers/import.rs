@@ -41,9 +41,12 @@ pub async fn upload_form(
     State(state): State<AppState>,
     session: tower_sessions::Session,
 ) -> HttpResult {
-    let Ok(_) = get_current_user(&state.pool, &session).await else {
+    let Ok((_, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(Redirect::to("/auth/login").into_response());
     };
+    if matches!(membership.role, model::Role::Member) {
+        return Ok(Redirect::to("/dashboard").into_response());
+    }
     Ok(Html(UploadTemplate.render()?).into_response())
 }
 
@@ -52,9 +55,12 @@ pub async fn upload_then_map_columns(
     session: tower_sessions::Session,
     mut multipart: Multipart,
 ) -> HttpResult {
-    let Ok(user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(Redirect::to("/auth/login").into_response());
     };
+    if matches!(membership.role, model::Role::Member) {
+        return Ok(Redirect::to("/dashboard").into_response());
+    }
     let mut uploaded = None;
 
     while let Some(field) = multipart
@@ -136,9 +142,12 @@ pub async fn import_uploaded(
     session: tower_sessions::Session,
     Form(mapping): Form<model::ColumnMapping>,
 ) -> HttpResult {
-    let Ok(user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(Redirect::to("/auth/login").into_response());
     };
+    if matches!(membership.role, model::Role::Member) {
+        return Ok(Redirect::to("/dashboard").into_response());
+    }
     let upload: UploadSession = session
         .get("csv_upload")
         .await
@@ -149,7 +158,9 @@ pub async fn import_uploaded(
     }
 
     let path = PathBuf::from(&upload.file_path);
-    let result = model::csv::import_csv_file(&state.pool, &user, &path, mapping).await;
+    let result =
+        model::csv::import_csv_file(&state.pool, &user, membership.household_id, &path, mapping)
+            .await;
     std::fs::remove_file(&path).ok();
     session.remove::<UploadSession>("csv_upload").await.ok();
     Ok(Html(ImportedTemplate { result: result? }.render()?).into_response())

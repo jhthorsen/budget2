@@ -110,11 +110,18 @@ pub async fn get(
     session: tower_sessions::Session,
     Query(query): Query<DashboardQuery>,
 ) -> HttpResult {
-    let Ok(user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
-    let report = model::Dashboard::report(&state.pool, user.id, query.filters()).await?;
+    let report = model::Dashboard::report(
+        &state.pool,
+        membership.household_id,
+        user.id,
+        membership.role,
+        query.filters(),
+    )
+    .await?;
     let income = report.formatted_income();
     let expenses = report.formatted_expenses();
 
@@ -139,13 +146,15 @@ pub async fn transactions(
     session: tower_sessions::Session,
     Query(query): Query<DashboardQuery>,
 ) -> HttpResult {
-    let Ok(user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
     let page = model::Dashboard::transactions(
         &state.pool,
+        membership.household_id,
         user.id,
+        membership.role,
         query.filters(),
         query.offset.max(0),
         TRANSACTION_ROWS,

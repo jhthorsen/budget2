@@ -95,6 +95,8 @@ pub async fn callback(
         }
     };
 
+    model::HouseholdMembership::ensure_for_user(&state.pool, user.id).await?;
+
     session
         .insert("user_id", user.id)
         .await

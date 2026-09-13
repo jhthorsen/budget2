@@ -1,6 +1,7 @@
 mod accounts;
 mod categories;
 pub mod csv;
+mod households;
 mod import_rules;
 mod transactions;
 mod user;
@@ -8,6 +9,7 @@ mod user;
 pub use accounts::*;
 pub use categories::*;
 pub use csv::{ColumnMapping, ColumnSuggestions, DateFormatOption, ImportResult};
+pub use households::*;
 pub use import_rules::*;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;

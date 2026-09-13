@@ -91,3 +91,15 @@ pub async fn get_current_user(
         Err(err) => Err(err.to_string()),
     }
 }
+
+pub async fn get_current_membership(
+    pool: &Pool,
+    session: &tower_sessions::Session,
+) -> Result<(model::User, model::HouseholdMembership), String> {
+    let user = get_current_user(pool, session).await?;
+    let membership = model::HouseholdMembership::for_user(pool, user.id)
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "User is not a member of a household".to_string())?;
+    Ok((user, membership))
+}

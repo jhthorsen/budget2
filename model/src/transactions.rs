@@ -104,16 +104,20 @@ pub struct TransactionFilters<'a> {
 impl Dashboard {
     pub async fn report(
         pool: &Pool,
-        user_id: i64,
+        household_id: i64,
+        viewer_id: i64,
+        role: super::Role,
         filters: TransactionFilters<'_>,
     ) -> Result<Self, sqlx::Error> {
-        let report_month = latest_report_month(pool, user_id).await?;
+        let report_month = latest_report_month(pool, household_id, viewer_id, role).await?;
 
         let (transaction_filter_accounts, transaction_filter_categories) =
-            Self::transaction_filter_options(pool, user_id).await?;
+            Self::transaction_filter_options(pool, household_id, viewer_id, role).await?;
         let line_points = Self::daily_line_points(
             pool,
-            user_id,
+            household_id,
+            viewer_id,
+            role,
             &report_month,
             filters.date,
             filters.account_id,
@@ -126,15 +130,21 @@ impl Dashboard {
               coalesce(sum(case when t.type = 'expense' then t.amount else 0.0 end), 0.0) as expenses,
               count(*) as transaction_count,
               coalesce(sum(case when t.category_id is null then 1 else 0 end), 0) as uncategorized_count
-            from transactions t
-            where t.user_id = ?
+            from transactions t join accounts a on a.id = t.account_id
+            where a.household_id = ?
+              and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?))
               and (? is null or t.processed_at like ? || '%')
               and (? is null or instr(lower(t.description), lower(?)) > 0)
               and (? is null or t.account_id = ?)
               and (? is null or (? = 0 and t.category_id is null) or t.category_id = ?)
               and (? is null or t.amount >= ?)"#,
         )
-            .bind(user_id)
+            .bind(household_id)
+            .bind(role.as_str())
+            .bind(role.as_str())
+            .bind(viewer_id)
+            .bind(role.as_str())
+            .bind(viewer_id)
             .bind(filters.date)
             .bind(filters.date)
             .bind(filters.description)
@@ -162,24 +172,30 @@ impl Dashboard {
 
     async fn transaction_filter_options(
         pool: &Pool,
-        user_id: i64,
+        household_id: i64,
+        viewer_id: i64,
+        role: super::Role,
     ) -> Result<(Vec<TransactionFilterOption>, Vec<TransactionFilterOption>), sqlx::Error> {
         let accounts = sqlx::query_as::<_, TransactionFilterOption>(
             r#"select id, coalesce(nullif(friendly, ''), name) as name
-            from accounts where user_id = ? order by name"#,
+            from accounts where household_id = ? and (? != 'member' or user_id = ?) order by name"#,
         )
-        .bind(user_id)
+        .bind(household_id)
+        .bind(role.as_str())
+        .bind(viewer_id)
         .fetch_all(pool)
         .await?;
         let categories = sqlx::query_as::<_, TransactionFilterOption>(
             r#"select distinct c.id, c.name from categories c
-            join transactions t on t.category_id = c.id where t.user_id = ?
+            join transactions t on t.category_id = c.id join accounts a on a.id = t.account_id
+            where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?))
             union all select 0 as id, 'Uncategorized' as name
-            where exists (select 1 from transactions where user_id = ? and category_id is null)
+            where exists (select 1 from transactions t join accounts a on a.id = t.account_id
+                where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?)) and t.category_id is null)
             order by name"#,
         )
-        .bind(user_id)
-        .bind(user_id)
+        .bind(household_id).bind(role.as_str()).bind(role.as_str()).bind(viewer_id).bind(role.as_str()).bind(viewer_id)
+        .bind(household_id).bind(role.as_str()).bind(role.as_str()).bind(viewer_id).bind(role.as_str()).bind(viewer_id)
         .fetch_all(pool)
         .await?;
         Ok((accounts, categories))
@@ -187,7 +203,9 @@ impl Dashboard {
 
     async fn daily_line_points(
         pool: &Pool,
-        user_id: i64,
+        household_id: i64,
+        viewer_id: i64,
+        role: super::Role,
         report_month: &str,
         date_filter: Option<&str>,
         account_id: Option<i64>,
@@ -198,27 +216,30 @@ impl Dashboard {
                 r#"select t.processed_at as day, coalesce(c.name, 'Uncategorized') as series,
                 t.type as transaction_type, coalesce(group_concat(distinct nullif(trim(t.original_currency), '')), '') as original_currency,
                 sum(t.amount) as amount from transactions t left join categories c on c.id = t.category_id
-                where t.user_id = ? and t.account_id = ? and t.processed_at >= ? and t.processed_at < ?
+                join accounts a on a.id = t.account_id
+                where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?)) and t.account_id = ? and t.processed_at >= ? and t.processed_at < ?
                 group by t.processed_at, t.category_id, t.type order by day, series, transaction_type"#,
             )
-            .bind(user_id).bind(account_id).bind(&start).bind(&end)
+            .bind(household_id).bind(role.as_str()).bind(role.as_str()).bind(viewer_id).bind(role.as_str()).bind(viewer_id).bind(account_id).bind(&start).bind(&end)
             .fetch_all(pool).await
         } else {
             sqlx::query_as::<_, LinePoint>(
                 r#"select t.processed_at as day, coalesce(nullif(a.friendly, ''), a.name) as series,
                 t.type as transaction_type, coalesce(group_concat(distinct nullif(trim(t.original_currency), '')), '') as original_currency,
                 sum(t.amount) as amount from transactions t join accounts a on a.id = t.account_id
-                where t.user_id = ? and t.processed_at >= ? and t.processed_at < ?
+                where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?)) and t.processed_at >= ? and t.processed_at < ?
                 group by t.processed_at, a.id, t.type order by day, series, transaction_type"#,
             )
-            .bind(user_id).bind(&start).bind(&end)
+            .bind(household_id).bind(role.as_str()).bind(role.as_str()).bind(viewer_id).bind(role.as_str()).bind(viewer_id).bind(&start).bind(&end)
             .fetch_all(pool).await
         }
     }
 
     pub async fn transactions(
         pool: &Pool,
-        user_id: i64,
+        household_id: i64,
+        viewer_id: i64,
+        role: super::Role,
         filters: TransactionFilters<'_>,
         offset: i64,
         limit: i64,
@@ -234,7 +255,7 @@ impl Dashboard {
             from transactions t
             join accounts a on a.id = t.account_id
             left join categories c on c.id = t.category_id
-            where t.user_id = ?
+            where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?))
               and (? is null or t.processed_at like ? || '%')
               and (? is null or instr(lower(t.description), lower(?)) > 0)
               and (? is null or t.account_id = ?)
@@ -243,7 +264,12 @@ impl Dashboard {
             order by t.processed_at desc, t.id desc
             limit ? offset ?"#,
         )
-        .bind(user_id)
+        .bind(household_id)
+        .bind(role.as_str())
+        .bind(role.as_str())
+        .bind(viewer_id)
+        .bind(role.as_str())
+        .bind(viewer_id)
         .bind(filters.date)
         .bind(filters.date)
         .bind(filters.description)
@@ -270,11 +296,16 @@ impl Dashboard {
     }
 }
 
-async fn latest_report_month(pool: &Pool, user_id: i64) -> Result<String, sqlx::Error> {
+async fn latest_report_month(
+    pool: &Pool,
+    household_id: i64,
+    viewer_id: i64,
+    role: super::Role,
+) -> Result<String, sqlx::Error> {
     Ok(sqlx::query_scalar::<_, Option<String>>(
-        "select max(substr(processed_at, 1, 7)) from transactions where user_id = ?",
+        "select max(substr(t.processed_at, 1, 7)) from transactions t join accounts a on a.id = t.account_id where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?))",
     )
-    .bind(user_id)
+    .bind(household_id).bind(role.as_str()).bind(role.as_str()).bind(viewer_id).bind(role.as_str()).bind(viewer_id)
     .fetch_one(pool)
     .await?
     .unwrap_or_default())
@@ -346,6 +377,8 @@ mod tests {
             let report = Dashboard::report(
                 &pool,
                 1,
+                1,
+                crate::Role::Manager,
                 TransactionFilters {
                     account_id,
                     ..Default::default()

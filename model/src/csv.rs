@@ -179,6 +179,7 @@ pub fn suggest_columns(path: &Path) -> Result<ColumnSuggestions, String> {
 pub async fn import_csv_file(
     pool: &Pool,
     user: &User,
+    household_id: i64,
     path: &Path,
     mapping: ColumnMapping,
 ) -> Result<ImportResult, String> {
@@ -202,7 +203,9 @@ pub async fn import_csv_file(
             .map(|(index, header)| (header.to_owned(), index))
             .collect(),
     );
-    let rules = ImportRule::all(pool).await.map_err(|err| err.to_string())?;
+    let rules = ImportRule::all(pool, household_id)
+        .await
+        .map_err(|err| err.to_string())?;
     let multiplier = mapping
         .currency_multiplier
         .as_deref()
@@ -230,7 +233,17 @@ pub async fn import_csv_file(
             }
         };
 
-        match import_row(pool, user, &record, &mapping, &rules, multiplier).await {
+        match import_row(
+            pool,
+            user,
+            household_id,
+            &record,
+            &mapping,
+            &rules,
+            multiplier,
+        )
+        .await
+        {
             Ok(true) => result.successful += 1,
             Ok(false) => result.errors.push(ImportError {
                 row_number,
@@ -250,6 +263,7 @@ pub async fn import_csv_file(
 async fn import_row(
     pool: &Pool,
     user: &User,
+    household_id: i64,
     record: &StringRecord,
     mapping: &ColumnMapping,
     rules: &[ImportRule],
@@ -277,13 +291,13 @@ async fn import_row(
                 .filter(|name| !name.is_empty())
         });
     let mut account_id = if let Some(name) = account_name {
-        account_id(pool, user.id, name).await?
+        account_id(pool, household_id, user.id, name).await?
     } else {
         0
     };
     let category_name = mapping.optional_value(record, mapping.category_column.as_deref());
     let mut category_id = if let Some(name) = category_name {
-        Some(category_id(pool, name).await?)
+        Some(category_id(pool, household_id, name).await?)
     } else {
         None
     };
@@ -326,8 +340,9 @@ async fn import_row(
             "income"
         };
         sqlx::query(
-            "insert into transactions (user_id, account_id, category_id, type, amount, original_amount, description, source, processed_at) values (?, ?, ?, ?, ?, ?, ?, 'csv', ?)",
+            "insert into transactions (user_id, imported_by_user_id, account_id, category_id, type, amount, original_amount, description, source, processed_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'csv', ?)",
         )
+        .bind(user.id)
         .bind(user.id)
         .bind(account_id)
         .bind(category_id)
@@ -344,10 +359,15 @@ async fn import_row(
     Ok(imported)
 }
 
-async fn account_id(pool: &Pool, user_id: i64, name: &str) -> Result<i64, String> {
+async fn account_id(
+    pool: &Pool,
+    household_id: i64,
+    user_id: i64,
+    name: &str,
+) -> Result<i64, String> {
     if let Some(id) =
-        sqlx::query_scalar::<_, i64>("select id from accounts where user_id = ? and name = ?")
-            .bind(user_id)
+        sqlx::query_scalar::<_, i64>("select id from accounts where household_id = ? and name = ?")
+            .bind(household_id)
             .bind(name)
             .fetch_optional(pool)
             .await
@@ -355,8 +375,9 @@ async fn account_id(pool: &Pool, user_id: i64, name: &str) -> Result<i64, String
     {
         return Ok(id);
     }
-    sqlx::query("insert into accounts (user_id, name, friendly) values (?, ?, ?)")
+    sqlx::query("insert into accounts (user_id, household_id, name, friendly) values (?, ?, ?, ?)")
         .bind(user_id)
+        .bind(household_id)
         .bind(name)
         .bind(name)
         .execute(pool)
@@ -365,16 +386,20 @@ async fn account_id(pool: &Pool, user_id: i64, name: &str) -> Result<i64, String
         .map_err(|err| err.to_string())
 }
 
-async fn category_id(pool: &Pool, name: &str) -> Result<i64, String> {
-    if let Some(id) = sqlx::query_scalar::<_, i64>("select id from categories where name = ?")
-        .bind(name)
-        .fetch_optional(pool)
-        .await
-        .map_err(|err| err.to_string())?
+async fn category_id(pool: &Pool, household_id: i64, name: &str) -> Result<i64, String> {
+    if let Some(id) = sqlx::query_scalar::<_, i64>(
+        "select id from categories where household_id = ? and name = ?",
+    )
+    .bind(household_id)
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|err| err.to_string())?
     {
         return Ok(id);
     }
-    sqlx::query("insert into categories (name) values (?)")
+    sqlx::query("insert into categories (household_id, name) values (?, ?)")
+        .bind(household_id)
         .bind(name)
         .execute(pool)
         .await

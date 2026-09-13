@@ -5,6 +5,8 @@ use crate::helpers::*;
 pub struct ImportRulesFormTemplate {
     #[allow(dead_code)]
     ctx: RequestContext,
+    #[allow(dead_code)]
+    user: model::User,
     form: model::ImportRule,
     form_open: bool,
     is_editing: bool,
@@ -14,6 +16,7 @@ pub struct ImportRulesFormTemplate {
 #[template(path = "import_rules/index.html")]
 pub struct ImportRulesListTemplate {
     ctx: RequestContext,
+    user: model::User,
     import_rules: Vec<model::ImportRule>,
     form: model::ImportRule,
     form_open: bool,
@@ -26,18 +29,19 @@ pub async fn edit(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> HttpResult {
-    let Ok(_user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
     let form = if id > 0 {
-        model::ImportRule::load(&state.pool, id).await?
+        model::ImportRule::load(&state.pool, id, membership.household_id).await?
     } else {
         Some(model::ImportRule::default())
     };
 
     let page = ImportRulesFormTemplate {
         ctx,
+        user,
         form: form.unwrap_or_default(),
         form_open: true,
         is_editing: id > 0,
@@ -51,13 +55,14 @@ pub async fn list(
     session: tower_sessions::Session,
     State(state): State<AppState>,
 ) -> HttpResult {
-    let Ok(_user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
-    let import_rules = model::ImportRule::all(&state.pool).await?;
+    let import_rules = model::ImportRule::all(&state.pool, membership.household_id).await?;
     let page = ImportRulesListTemplate {
         ctx,
+        user,
         form: model::ImportRule::default(),
         form_open: import_rules.is_empty(),
         is_editing: false,
@@ -71,17 +76,19 @@ pub async fn save(
     ctx: RequestContext,
     session: tower_sessions::Session,
     State(state): State<AppState>,
-    Form(form): Form<model::ImportRule>,
+    Form(mut form): Form<model::ImportRule>,
 ) -> HttpResult {
-    let Ok(_user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
-    form.save(&state.pool).await?;
+    form.household_id = membership.household_id;
+    form.save(&state.pool, membership.household_id).await?;
 
-    let import_rules = model::ImportRule::all(&state.pool).await?;
+    let import_rules = model::ImportRule::all(&state.pool, membership.household_id).await?;
     let page = ImportRulesListTemplate {
         ctx,
+        user,
         form: model::ImportRule::default(),
         import_rules,
         form_open: true,

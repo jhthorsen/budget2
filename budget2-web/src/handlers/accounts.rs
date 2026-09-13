@@ -5,6 +5,8 @@ use crate::helpers::*;
 pub struct AccountsFormTemplate {
     #[allow(dead_code)]
     ctx: RequestContext,
+    #[allow(dead_code)]
+    user: model::User,
     form: model::Account,
     form_open: bool,
     is_editing: bool,
@@ -14,6 +16,7 @@ pub struct AccountsFormTemplate {
 #[template(path = "accounts/index.html")]
 pub struct AccountsListTemplate {
     ctx: RequestContext,
+    user: model::User,
     accounts: Vec<model::Account>,
     form: model::Account,
     form_open: bool,
@@ -26,18 +29,19 @@ pub async fn edit(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> HttpResult {
-    let Ok(_user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
     let form = if id > 0 {
-        model::Account::load(&state.pool, id).await?
+        model::Account::load(&state.pool, id, membership.household_id).await?
     } else {
         Some(model::Account::default())
     };
 
     let page = AccountsFormTemplate {
         ctx,
+        user,
         form: form.unwrap_or_default(),
         form_open: true,
         is_editing: id > 0,
@@ -51,13 +55,14 @@ pub async fn list(
     session: tower_sessions::Session,
     State(state): State<AppState>,
 ) -> HttpResult {
-    let Ok(_user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
-    let accounts = model::Account::all(&state.pool).await?;
+    let accounts = model::Account::all(&state.pool, membership.household_id).await?;
     let page = AccountsListTemplate {
         ctx,
+        user,
         form: model::Account::default(),
         form_open: accounts.is_empty(),
         is_editing: false,
@@ -73,16 +78,17 @@ pub async fn save(
     State(state): State<AppState>,
     Form(mut form): Form<model::Account>,
 ) -> HttpResult {
-    let Ok(user) = get_current_user(&state.pool, &session).await else {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
     form.user_id = user.id;
-    form.save(&state.pool).await?;
+    form.save(&state.pool, membership.household_id).await?;
 
-    let accounts = model::Account::all(&state.pool).await?;
+    let accounts = model::Account::all(&state.pool, membership.household_id).await?;
     let page = AccountsListTemplate {
         ctx,
+        user,
         form: model::Account::default(),
         accounts,
         form_open: true,
