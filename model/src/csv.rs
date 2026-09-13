@@ -212,6 +212,9 @@ pub async fn import_csv_file(
         .unwrap_or("1")
         .parse::<f64>()
         .map_err(|_| "Currency multiplier must be a number".to_string())?;
+    if !multiplier.is_finite() {
+        return Err("Currency multiplier must be finite".to_string());
+    }
 
     let mut result = ImportResult {
         total_rows: 0,
@@ -347,7 +350,7 @@ async fn import_row(
         .bind(account_id)
         .bind(category_id)
         .bind(transaction_type)
-        .bind((original_amount * multiplier).abs())
+        .bind(scaled_amount(original_amount, multiplier)?)
         .bind(original_amount)
         .bind(description)
         .bind(&date)
@@ -408,11 +411,24 @@ async fn category_id(pool: &Pool, household_id: i64, name: &str) -> Result<i64, 
 }
 
 fn normalize_amount(value: &str) -> Result<f64, String> {
-    value
+    let amount = value
         .trim()
         .replace([',', '$'], "")
         .parse::<f64>()
-        .map_err(|_| format!("Invalid amount: {value}"))
+        .map_err(|_| format!("Invalid amount: {value}"))?;
+    if amount.is_finite() {
+        Ok(amount)
+    } else {
+        Err(format!("Invalid amount: {value}"))
+    }
+}
+
+fn scaled_amount(amount: f64, multiplier: f64) -> Result<f64, String> {
+    let scaled = (amount * multiplier).abs();
+    scaled
+        .is_finite()
+        .then_some(scaled)
+        .ok_or_else(|| "Amount is outside the supported range".to_string())
 }
 
 fn detect_delimiter(path: &Path) -> Result<u8, String> {
@@ -500,6 +516,9 @@ mod tests {
     #[test]
     fn normalizes_common_csv_values() {
         assert_eq!(normalize_amount("$1,234.50").unwrap(), 1234.5);
+        assert!(normalize_amount("NaN").is_err());
+        assert!(normalize_amount("inf").is_err());
+        assert!(scaled_amount(f64::MAX, 2.0).is_err());
         assert_eq!(normalize_date("2026/9/2", None).unwrap(), "2026-09-02");
         assert_eq!(normalize_date("02.09.2026", None).unwrap(), "2026-09-02");
         assert_eq!(normalize_date("2026-31-01", None).unwrap(), "2026-01-31");
