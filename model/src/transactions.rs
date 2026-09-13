@@ -35,10 +35,14 @@ impl Dashboard {
 pub struct Transaction {
     /// Date on which the transaction was processed.
     pub processed_at: String,
+    /// Account identifier used by the dashboard filter link.
+    pub account_id: i64,
     /// Original transaction description.
     pub description: String,
     /// Friendly account name, falling back to the account name.
     pub account_name: String,
+    /// Category identifier used by the dashboard filter link; zero means uncategorized.
+    pub category_id: i64,
     /// Category name, or “Uncategorized” when no category is assigned.
     pub category_name: String,
     /// Transaction kind, currently `income` or `expense`.
@@ -247,8 +251,10 @@ impl Dashboard {
         let mut transactions = sqlx::query_as::<_, Transaction>(
             r#"select
               t.processed_at,
+              t.account_id,
               t.description,
               coalesce(nullif(a.friendly, ''), a.name) as account_name,
+              coalesce(t.category_id, 0) as category_id,
               coalesce(c.name, 'Uncategorized') as category_name,
               t.type as transaction_type,
               t.amount
