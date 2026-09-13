@@ -33,10 +33,3 @@ tracing-subscriber.workspace = true
 
 [features]
 offline = []
-
-[package.metadata.deb]
-maintainer-scripts = "systemd"
-systemd-units = [
-  { unit-name = "budget2-web", enable = true, start = true },
-  { unit-name = "budget2-web-upload-cleanup", enable = true, start = true },
-]
