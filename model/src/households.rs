@@ -102,22 +102,67 @@ impl HouseholdMembership {
         user_id: i64,
         role: Role,
     ) -> Result<(), sqlx::Error> {
-        let manager = sqlx::query_scalar::<_, i64>(
-            "select count(*) from household_members where household_id = ? and user_id = ? and role = 'manager'",
+        let updated = sqlx::query(
+            r#"update household_members set role = ?
+            where household_id = ? and user_id = ?
+              and exists (
+                select 1 from household_members actor
+                where actor.household_id = ? and actor.user_id = ? and actor.role = 'manager'
+              )
+              and (
+                role != 'manager' or ? = 'manager' or exists (
+                  select 1 from household_members other
+                  where other.household_id = ? and other.role = 'manager' and other.user_id != ?
+                )
+              )"#,
         )
-        .bind(household_id).bind(actor_id).fetch_one(pool).await?;
-        if manager == 0 {
+        .bind(role.as_str())
+        .bind(household_id)
+        .bind(user_id)
+        .bind(household_id)
+        .bind(actor_id)
+        .bind(role.as_str())
+        .bind(household_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+        if updated.rows_affected() == 0 {
             return Err(sqlx::Error::Protocol(
-                "Only household managers can change roles".into(),
+                "Only household managers can change roles, and a household must retain a manager"
+                    .into(),
             ));
         }
-        sqlx::query("update household_members set role = ? where household_id = ? and user_id = ?")
-            .bind(role.as_str())
-            .bind(household_id)
-            .bind(user_id)
-            .execute(pool)
-            .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn household_retains_a_manager() {
+        let pool = crate::build_pool("sqlite::memory:", true).await.unwrap();
+        sqlx::query("insert into users (id, email, name, oauth_provider, oauth_id) values (1, 'one@example.com', 'One', 'test', 'one'), (2, 'two@example.com', 'Two', 'test', 'two')")
+            .execute(&pool).await.unwrap();
+        sqlx::query("insert into households (id, name) values (1, 'Home')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("insert into household_members (household_id, user_id, role) values (1, 1, 'manager'), (1, 2, 'member')")
+            .execute(&pool).await.unwrap();
+
+        assert!(
+            HouseholdMembership::set_role(&pool, 1, 1, 1, Role::Member)
+                .await
+                .is_err()
+        );
+        HouseholdMembership::set_role(&pool, 1, 1, 2, Role::Manager)
+            .await
+            .unwrap();
+        HouseholdMembership::set_role(&pool, 1, 1, 1, Role::Member)
+            .await
+            .unwrap();
     }
 }
 

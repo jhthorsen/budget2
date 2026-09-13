@@ -28,6 +28,9 @@ pub async fn edit(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     let form = if id > 0 {
         model::Category::load(&state.pool, id, membership.household_id).await?
@@ -53,6 +56,9 @@ pub async fn list(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     let categories = model::Category::all(&state.pool, membership.household_id).await?;
     let page = CategoriesListTemplate {
@@ -73,6 +79,9 @@ pub async fn save(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     form.save(&state.pool, membership.household_id).await?;
 

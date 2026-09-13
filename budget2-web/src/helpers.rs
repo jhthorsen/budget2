@@ -103,3 +103,7 @@ pub async fn get_current_membership(
         .ok_or_else(|| "User is not a member of a household".to_string())?;
     Ok((user, membership))
 }
+
+pub fn is_manager(membership: &model::HouseholdMembership) -> bool {
+    matches!(membership.role, model::Role::Manager)
+}

@@ -29,6 +29,9 @@ pub async fn edit(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     let form = if id > 0 {
         model::ImportRule::load(&state.pool, id, membership.household_id).await?
@@ -56,6 +59,9 @@ pub async fn list(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     let import_rules = model::ImportRule::all(&state.pool, membership.household_id).await?;
     let page = ImportRulesListTemplate {
@@ -76,6 +82,9 @@ pub async fn save(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     form.household_id = membership.household_id;
     form.save(&state.pool, membership.household_id).await?;
@@ -99,8 +108,12 @@ pub async fn delete(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
-    let Some(rule) = model::ImportRule::load(&state.pool, id, membership.household_id).await? else {
+    let Some(rule) = model::ImportRule::load(&state.pool, id, membership.household_id).await?
+    else {
         return Ok(axum::response::Redirect::to("/import_rules").into_response());
     };
     rule.delete(&state.pool, membership.household_id).await?;

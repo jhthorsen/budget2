@@ -28,6 +28,9 @@ pub async fn edit(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     if id <= 0 {
         return Ok(axum::response::Redirect::to("/accounts").into_response());
@@ -55,6 +58,9 @@ pub async fn list(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     let accounts = model::Account::all(&state.pool, membership.household_id).await?;
     let page = AccountsListTemplate {
@@ -75,6 +81,9 @@ pub async fn save(
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    if !is_manager(&membership) {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    }
 
     form.save(&state.pool, membership.household_id).await?;
 
