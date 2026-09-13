@@ -25,6 +25,21 @@ pub async fn callback(
     session: tower_sessions::Session,
 ) -> HttpResult {
     #[cfg(not(feature = "offline"))]
+    {
+        let expected_state: Option<String> = session
+            .get("oauth_csrf_state")
+            .await
+            .map_err(|err| format!("Unable to read OAuth state: {err}"))?;
+        if expected_state.as_deref() != Some(query.state.as_str()) {
+            return Err("Invalid OAuth state".into());
+        }
+        session
+            .remove::<String>("oauth_csrf_state")
+            .await
+            .map_err(|err| format!("Unable to clear OAuth state: {err}"))?;
+    }
+
+    #[cfg(not(feature = "offline"))]
     let info: UserInfo = {
         let token = state
             .oauth_client
@@ -94,8 +109,11 @@ pub async fn callback(
 }
 
 #[cfg(not(feature = "offline"))]
-pub async fn login(State(state): State<crate::AppState>) -> impl IntoResponse {
-    let (auth_url, _csrf_token) = state
+pub async fn login(
+    State(state): State<crate::AppState>,
+    session: tower_sessions::Session,
+) -> HttpResult {
+    let (auth_url, csrf_token) = state
         .oauth_client
         .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("openid".to_string()))
@@ -103,7 +121,16 @@ pub async fn login(State(state): State<crate::AppState>) -> impl IntoResponse {
         .add_scope(Scope::new("profile".to_string()))
         .url();
 
-    axum::response::Redirect::to(auth_url.as_str())
+    session
+        .insert("oauth_csrf_state", csrf_token.secret())
+        .await
+        .map_err(|err| format!("Unable to save OAuth state: {err}"))?;
+    session
+        .save()
+        .await
+        .map_err(|err| format!("Unable to save OAuth session: {err}"))?;
+
+    Ok(axum::response::Redirect::to(auth_url.as_str()).into_response())
 }
 
 #[cfg(feature = "offline")]
