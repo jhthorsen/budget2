@@ -1,0 +1,50 @@
+name: Debian package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: debian:13
+    steps:
+      - id: tag
+        name: Check tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            printf 'valid=true\nversion=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          else
+            printf 'valid=false\n' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.tag.outputs.valid == 'true'
+
+      - name: Install build dependencies
+        if: steps.tag.outputs.valid == 'true'
+        run: apt-get update && apt-get install --yes --no-install-recommends build-essential ca-certificates curl libsqlite3-dev libssl-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.tag.outputs.valid == 'true'
+
+      - name: Install cargo-deb
+        if: steps.tag.outputs.valid == 'true'
+        run: cargo install cargo-deb --locked
+
+      - name: Build package
+        if: steps.tag.outputs.valid == 'true'
+        run: cargo deb --package budget2-web --deb-version "${{ steps.tag.outputs.version }}" -- --locked
+
+      - name: Verify systemd units
+        if: steps.tag.outputs.valid == 'true'
+        run: dpkg-deb --contents target/debian/*.deb | grep -E 'lib/systemd/system/budget2(\.service|-upload-cleanup\.(service|timer))$'
+
+      - uses: actions/upload-artifact@v4
+        if: steps.tag.outputs.valid == 'true'
+        with:
+          name: budget2-web-${{ steps.tag.outputs.version }}-amd64.deb
+          path: target/debian/*.deb
