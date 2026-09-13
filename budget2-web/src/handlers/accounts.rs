@@ -9,7 +9,6 @@ pub struct AccountsFormTemplate {
     user: model::User,
     form: model::Account,
     form_open: bool,
-    is_editing: bool,
 }
 
 #[derive(Template)]
@@ -18,9 +17,6 @@ pub struct AccountsListTemplate {
     ctx: RequestContext,
     user: model::User,
     accounts: Vec<model::Account>,
-    form: model::Account,
-    form_open: bool,
-    is_editing: bool,
 }
 
 pub async fn edit(
@@ -33,18 +29,18 @@ pub async fn edit(
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
-    let form = if id > 0 {
-        model::Account::load(&state.pool, id, membership.household_id).await?
-    } else {
-        Some(model::Account::default())
+    if id <= 0 {
+        return Ok(axum::response::Redirect::to("/accounts").into_response());
+    }
+    let Some(form) = model::Account::load(&state.pool, id, membership.household_id).await? else {
+        return Ok(axum::response::Redirect::to("/accounts").into_response());
     };
 
     let page = AccountsFormTemplate {
         ctx,
         user,
-        form: form.unwrap_or_default(),
+        form,
         form_open: true,
-        is_editing: id > 0,
     };
 
     Ok(Html(page.render()?).into_response())
@@ -63,9 +59,6 @@ pub async fn list(
     let page = AccountsListTemplate {
         ctx,
         user,
-        form: model::Account::default(),
-        form_open: accounts.is_empty(),
-        is_editing: false,
         accounts,
     };
 
@@ -89,10 +82,7 @@ pub async fn save(
     let page = AccountsListTemplate {
         ctx,
         user,
-        form: model::Account::default(),
         accounts,
-        form_open: true,
-        is_editing: false,
     };
 
     Ok(Html(page.render()?).into_response())

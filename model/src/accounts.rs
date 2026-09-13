@@ -64,6 +64,11 @@ impl Account {
 
     pub async fn save(self, pool: &Pool, household_id: i64) -> Result<Self, sqlx::Error> {
         self.validate()?;
+        if !self.in_storage() {
+            return Err(sqlx::Error::Protocol(
+                "Accounts are created by importing transactions.".into(),
+            ));
+        }
 
         let name = self.name.trim();
         let mut friendly = self.friendly.trim();
@@ -71,33 +76,18 @@ impl Account {
             friendly = name;
         }
 
-        let id = if self.in_storage() {
-            sqlx::query!(
-                "update accounts set name = ?, friendly = ?, description = ? where id = ? and household_id = ?",
-                name,
-                friendly,
-                self.description,
-                self.id,
-                household_id,
-            )
-            .execute(pool)
-            .await?;
-            self.id
-        } else {
-            sqlx::query!(
-                "insert into accounts (user_id, household_id, name, friendly, description) values (?, ?, ?, ?, ?)",
-                self.user_id,
-                household_id,
-                name,
-                friendly,
-                self.description,
-            )
-            .execute(pool)
-            .await?
-            .last_insert_rowid()
-        };
+        sqlx::query!(
+            "update accounts set name = ?, friendly = ?, description = ? where id = ? and household_id = ?",
+            name,
+            friendly,
+            self.description,
+            self.id,
+            household_id,
+        )
+        .execute(pool)
+        .await?;
 
-        Ok(Self { id, ..self })
+        Ok(self)
     }
 
     pub fn validate(&self) -> Result<(), sqlx::Error> {

@@ -1,5 +1,5 @@
 <details id="edit_account_details" class="section" {% if form_open %}open{% endif %}>
-  <summary role="button" class="secondary">{% if is_editing %}Edit account{% else %}Add account{% endif %}</summary>
+  <summary role="button" class="secondary">Edit account</summary>
   <form method="post" action="/accounts/{{ form.id }}">
     <input type="hidden" name="id" value="{{ form.id }}">
     <input type="hidden" name="user_id" value="0">
@@ -29,7 +29,7 @@
 
     <div class="form-footer">
       <button type="submit" command="close" commandfor="edit_account_details">Cancel</button>
-      <button type="submit">{% if is_editing %}Save account{% else %}Add account{% endif %}</button>
+      <button type="submit">Save account</button>
     </div>
   </form>
 </details>
