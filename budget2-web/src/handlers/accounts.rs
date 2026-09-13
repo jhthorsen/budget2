@@ -8,7 +8,7 @@ pub struct AccountsFormTemplate {
     #[allow(dead_code)]
     user: model::User,
     form: model::Account,
-    form_open: bool,
+    owners: Vec<model::HouseholdMember>,
 }
 
 #[derive(Template)]
@@ -35,12 +35,13 @@ pub async fn edit(
     let Some(form) = model::Account::load(&state.pool, id, membership.household_id).await? else {
         return Ok(axum::response::Redirect::to("/accounts").into_response());
     };
+    let owners = model::HouseholdMembership::members(&state.pool, membership.household_id).await?;
 
     let page = AccountsFormTemplate {
         ctx,
         user,
         form,
-        form_open: true,
+        owners,
     };
 
     Ok(Html(page.render()?).into_response())
@@ -69,13 +70,12 @@ pub async fn save(
     ctx: RequestContext,
     session: tower_sessions::Session,
     State(state): State<AppState>,
-    Form(mut form): Form<model::Account>,
+    Form(form): Form<model::Account>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
 
-    form.user_id = user.id;
     form.save(&state.pool, membership.household_id).await?;
 
     let accounts = model::Account::all(&state.pool, membership.household_id).await?;

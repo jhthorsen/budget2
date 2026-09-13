@@ -19,25 +19,15 @@
     main>article {
       background-color: transparent;
       border-color: transparent;
-
-      &>header.no-margin {
-        margin-bottom: 0;
-      }
     }
 
-    article {
-
-      footer,
-      header {
-        padding: var(--pico-block-spacing-vertical) var(--pico-block-spacing-horizontal);
-      }
+    button.danger {
+      background-color: var(--pico-del-color);
     }
 
     dialog {
-      >article {
-        border-radius: 1rem;
-        padding: calc(var(--pico-block-spacing-vertical) * 1.5) calc(var(--pico-block-spacing-horizontal) * 1.5);
-      }
+      --pico-block-spacing-vertical: 2rem;
+      --pico-block-spacing-horizontal: 2rem;
 
       header button[rel="prev"] {
         position: relative;
@@ -84,6 +74,11 @@
         --pico-form-element-spacing-vertical: 0.2rem;
         --pico-form-element-spacing-horizontal: 0.4rem;
         margin: -0.1rem -0.4rem;
+      }
+
+      &.narrow {
+        white-space: nowrap;
+        width: 1%;
       }
     }
 

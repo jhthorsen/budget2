@@ -11,6 +11,8 @@ pub struct ImportRule {
     pub account_id: Option<i64>,
     pub category_id: Option<i64>,
     pub priority: i64,
+    #[serde(default)]
+    pub category_name: String,
 }
 
 impl Default for ImportRule {
@@ -23,6 +25,7 @@ impl Default for ImportRule {
             account_id: None,
             category_id: None,
             priority: 50,
+            category_name: String::new(),
         }
     }
 }
@@ -31,18 +34,26 @@ impl ImportRule {
     pub async fn all(pool: &Pool, household_id: i64) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Self,
-            r#"select id as 'id!', household_id as 'household_id!', match_account, match_description, account_id, category_id, priority
-            from import_rules
-            where household_id = ?
-            order by priority, id"#,
+            r#"select r.id as 'id!', r.household_id as 'household_id!', r.match_account, r.match_description,
+            r.account_id, r.category_id, r.priority,
+            coalesce(c.name, '') as 'category_name!: String'
+            from import_rules r
+            left join accounts a on a.id = r.account_id and a.household_id = r.household_id
+            left join categories c on c.id = r.category_id and c.household_id = r.household_id
+            where r.household_id = ?
+            order by r.priority, r.id"#,
             household_id,
         )
         .fetch_all(pool)
         .await
     }
 
-    pub async fn delete(&self, pool: &Pool) -> Result<(), sqlx::Error> {
-        sqlx::query!("delete from import_rules where id = ?", self.id)
+    pub async fn delete(&self, pool: &Pool, household_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "delete from import_rules where id = ? and household_id = ?",
+            self.id,
+            household_id
+        )
             .execute(pool)
             .await?;
         Ok(())
@@ -59,9 +70,13 @@ impl ImportRule {
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Self,
-            r#"select id as 'id!', household_id as 'household_id!', match_account, match_description, account_id, category_id, priority
-            from import_rules
-            where id = ? and household_id = ?"#,
+            r#"select r.id as 'id!', r.household_id as 'household_id!', r.match_account, r.match_description,
+            r.account_id, r.category_id, r.priority,
+            coalesce(c.name, '') as 'category_name!: String'
+            from import_rules r
+            left join accounts a on a.id = r.account_id and a.household_id = r.household_id
+            left join categories c on c.id = r.category_id and c.household_id = r.household_id
+            where r.id = ? and r.household_id = ?"#,
             id,
             household_id,
         )
@@ -132,6 +147,9 @@ impl ImportRule {
     }
 
     pub fn validate(&self) -> Result<(), sqlx::Error> {
+        if !(1..=100).contains(&self.priority) {
+            return super::invalid("Priority must be between 1 and 100.");
+        }
         if self.match_account.is_none() && self.match_description.is_none() {
             return super::invalid("At least match account or match description must be provided.");
         }

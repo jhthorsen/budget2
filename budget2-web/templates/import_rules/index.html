@@ -5,39 +5,31 @@
 {% block content %}
 <article>
   <header class="no-margin">
+    <a href="/import_rules/0" data-history="none" role="button" style="float:right">Add import rule</a>
     <h1>Import Rules</h1>
   </header>
 
   <section>
-    {% include "import_rules/form.html" %}
-  </section>
-
-  <section>
-    <h2>All import_rules</h2>
     {% if import_rules.is_empty() %}
-    <p>No import_rules exists.</p>
+    <p>No import rules exists.</p>
     {% else %}
     <figure>
       <table>
         <thead>
           <tr>
-            <th>Priority</th>
-            <th>Account</th>
-            <th>Category</th>
-            <th>Match account</th>
-            <th>Match description</th>
+            <th class="narrow">Category</th>
+            <th class="narrow">Priority</th>
+            <th>Match expression</th>
+            <th class="narrow">Edit</th>
           </tr>
         </thead>
         <tbody>
           {% for import_rule in import_rules %}
           <tr>
-            <td>{{ import_rule.priority }}</td>
-            <td class="nowrap"><a href="/import_rules/{{ import_rule.id }}">{{ import_rule.account_id | assigned_or("0")
-                }}</a></td>
-            <td class="nowrap"><a href="/import_rules/{{ import_rule.id }}">{{ import_rule.category_id |
-                assigned_or("0") }}</a></td>
-            <td>{{ import_rule.match_account | assigned_or("") }}</td>
+            <td class="narrow"><a href="/import_rules/{{ import_rule.id }}">{{ import_rule.category_name }}</a></td>
+            <td>{{ import_rule.priority / 10 }}</td>
             <td>{{ import_rule.match_description | assigned_or("") }}</td>
+            <td class="narrow"><a href="/import_rules/{{ import_rule.id }}" data-history="none">Edit</a></td>
           </tr>
           {% endfor %}
         </tbody>

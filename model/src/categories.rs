@@ -84,7 +84,7 @@ impl Category {
 
     pub fn validate(&self) -> Result<(), sqlx::Error> {
         let len = self.name.trim().len();
-        if (3..=64).contains(&len) {
+        if !(2..=64).contains(&len) {
             return super::invalid("Name must be between 3 and 64 characters long.");
         }
 

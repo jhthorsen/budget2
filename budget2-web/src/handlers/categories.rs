@@ -8,7 +8,6 @@ pub struct CategoriesFormTemplate {
     #[allow(dead_code)]
     user: model::User,
     form: model::Category,
-    form_open: bool,
     is_editing: bool,
 }
 
@@ -18,9 +17,6 @@ pub struct CategoriesListTemplate {
     ctx: RequestContext,
     user: model::User,
     categories: Vec<model::Category>,
-    form: model::Category,
-    form_open: bool,
-    is_editing: bool,
 }
 
 pub async fn edit(
@@ -43,7 +39,6 @@ pub async fn edit(
         ctx,
         user,
         form: form.unwrap_or_default(),
-        form_open: true,
         is_editing: id > 0,
     };
 
@@ -63,9 +58,6 @@ pub async fn list(
     let page = CategoriesListTemplate {
         ctx,
         user,
-        form: model::Category::default(),
-        form_open: categories.is_empty(),
-        is_editing: false,
         categories,
     };
 
@@ -88,10 +80,7 @@ pub async fn save(
     let page = CategoriesListTemplate {
         ctx,
         user,
-        form: model::Category::default(),
         categories,
-        form_open: true,
-        is_editing: false,
     };
 
     Ok(Html(page.render()?).into_response())

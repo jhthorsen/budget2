@@ -8,7 +8,7 @@ pub struct ImportRulesFormTemplate {
     #[allow(dead_code)]
     user: model::User,
     form: model::ImportRule,
-    form_open: bool,
+    categories: Vec<model::Category>,
     is_editing: bool,
 }
 
@@ -18,9 +18,6 @@ pub struct ImportRulesListTemplate {
     ctx: RequestContext,
     user: model::User,
     import_rules: Vec<model::ImportRule>,
-    form: model::ImportRule,
-    form_open: bool,
-    is_editing: bool,
 }
 
 pub async fn edit(
@@ -38,12 +35,13 @@ pub async fn edit(
     } else {
         Some(model::ImportRule::default())
     };
+    let categories = model::Category::all(&state.pool, membership.household_id).await?;
 
     let page = ImportRulesFormTemplate {
         ctx,
         user,
         form: form.unwrap_or_default(),
-        form_open: true,
+        categories,
         is_editing: id > 0,
     };
 
@@ -63,9 +61,6 @@ pub async fn list(
     let page = ImportRulesListTemplate {
         ctx,
         user,
-        form: model::ImportRule::default(),
-        form_open: import_rules.is_empty(),
-        is_editing: false,
         import_rules,
     };
 
@@ -89,10 +84,32 @@ pub async fn save(
     let page = ImportRulesListTemplate {
         ctx,
         user,
-        form: model::ImportRule::default(),
         import_rules,
-        form_open: true,
-        is_editing: false,
+    };
+
+    Ok(Html(page.render()?).into_response())
+}
+
+pub async fn delete(
+    ctx: RequestContext,
+    session: tower_sessions::Session,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> HttpResult {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
+        return Ok(axum::response::Redirect::to("/auth/login").into_response());
+    };
+
+    let Some(rule) = model::ImportRule::load(&state.pool, id, membership.household_id).await? else {
+        return Ok(axum::response::Redirect::to("/import_rules").into_response());
+    };
+    rule.delete(&state.pool, membership.household_id).await?;
+
+    let import_rules = model::ImportRule::all(&state.pool, membership.household_id).await?;
+    let page = ImportRulesListTemplate {
+        ctx,
+        user,
+        import_rules,
     };
 
     Ok(Html(page.render()?).into_response())

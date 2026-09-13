@@ -69,6 +69,18 @@ impl Account {
                 "Accounts are created by importing transactions.".into(),
             ));
         }
+        let owner_exists = sqlx::query_scalar::<_, i64>(
+            "select count(*) from household_members where household_id = ? and user_id = ?",
+        )
+        .bind(household_id)
+        .bind(self.user_id)
+        .fetch_one(pool)
+        .await?;
+        if owner_exists == 0 {
+            return Err(sqlx::Error::Protocol(
+                "Account owner is outside the household.".into(),
+            ));
+        }
 
         let name = self.name.trim();
         let mut friendly = self.friendly.trim();
@@ -77,7 +89,8 @@ impl Account {
         }
 
         sqlx::query!(
-            "update accounts set name = ?, friendly = ?, description = ? where id = ? and household_id = ?",
+            "update accounts set user_id = ?, name = ?, friendly = ?, description = ? where id = ? and household_id = ?",
+            self.user_id,
             name,
             friendly,
             self.description,
@@ -96,7 +109,7 @@ impl Account {
         }
 
         let len = self.name.trim().len();
-        if (3..=64).contains(&len) {
+        if !(2..=64).contains(&len) {
             return super::invalid("Name must be between 3 and 64 characters long.");
         }
 

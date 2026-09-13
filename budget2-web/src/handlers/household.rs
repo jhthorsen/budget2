@@ -2,7 +2,7 @@ use crate::helpers::*;
 use serde::Deserialize;
 
 #[derive(Template)]
-#[template(path = "household.html")]
+#[template(path = "household/index.html")]
 struct HouseholdTemplate {
     ctx: RequestContext,
     user: model::User,

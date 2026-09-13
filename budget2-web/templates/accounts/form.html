@@ -1,35 +1,51 @@
-<details id="edit_account_details" class="section" {% if form_open %}open{% endif %}>
-  <summary role="button" class="secondary">Edit account</summary>
-  <form method="post" action="/accounts/{{ form.id }}">
-    <input type="hidden" name="id" value="{{ form.id }}">
-    <input type="hidden" name="user_id" value="0">
+<dialog id="dialog" open data-swap="morph:#dialog">
+  <article>
+    <header>
+      <h2>Edit account</h2>
+    </header>
+    <form id="account_form" method="post" action="/accounts/{{ form.id }}" data-history="none">
+      <input type="hidden" name="id" value="{{ form.id }}">
 
-    <fieldset class="grid">
-      <label>
-        Name
-        <input type="text" name="name" minlength="3" maxlength="64" required value="{{ form.name }}"
-          placeholder="e.g. ImportNameChecking123">
-        <small>Should match the import account name.</small>
-      </label>
+      <fieldset>
+        <label>
+          Owner
+          <select name="user_id" required>
+            {% for owner in owners %}
+            <option value="{{ owner.user_id }}" {% if owner.user_id==form.user_id %}selected{% endif %}>
+              {% if owner.name.is_empty() %}{{ owner.email }}{% else %}{{ owner.name }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+      </fieldset>
 
-      <label>
-        Friendly name
-        <input type="text" name="friendly" value="{{ form.friendly }}" placeholder="e.g. Alex's Checking Account">
-        <small>How it appears in the UI.</small>
-      </label>
-    </fieldset>
+      <fieldset class="grid">
+        <label>
+          Name
+          <input type="text" name="name" minlength="3" maxlength="64" required value="{{ form.name }}"
+            placeholder="e.g. ImportNameChecking123">
+          <small>Should match the import account name.</small>
+        </label>
 
-    <fieldset>
-      <label>
-        Description
-        <textarea name="description" rows="2"
-          placeholder="Optional — a brief note about this account.">{{ form.description }}</textarea>
-      </label>
-    </fieldset>
+        <label>
+          Friendly name
+          <input type="text" name="friendly" value="{{ form.friendly }}" placeholder="e.g. Alex's Checking Account">
+          <small>How it appears in the UI.</small>
+        </label>
+      </fieldset>
 
-    <div class="form-footer">
-      <button type="submit" command="close" commandfor="edit_account_details">Cancel</button>
-      <button type="submit">Save account</button>
-    </div>
-  </form>
-</details>
+      <fieldset>
+        <label>
+          Description
+          <textarea name="description" rows="2"
+            placeholder="Optional — a brief note about this account.">{{ form.description }}</textarea>
+        </label>
+      </fieldset>
+
+    </form>
+    <footer>
+      <button type="submit" form="account_form">Save account</button>
+      <button type="button" class="secondary" on:load on:click="el.closest('dialog').close()">Cancel</button>
+    </footer>
+  </article>
+</dialog>

@@ -4,15 +4,12 @@
 
 {% block content %}
 <article>
-  <header class="no-margin">
+  <header>
     <h1>Accounts</h1>
-    <p>
-      Accounts are created automatically when you import transactions.
-    </p>
+    <p>Accounts are created automatically when you import transactions.</p>
   </header>
 
   <section>
-    <h2>All accounts</h2>
     {% if accounts.is_empty() %}
     <p>No accounts exists.</p>
     {% else %}
@@ -20,20 +17,23 @@
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Friendly name</th>
-            <th>Owner</th>
+            <th class="narrow">Name</th>
+            <th class="narrow">Friendly name</th>
+            <th class="narrow">Owner</th>
             <th>Description</th>
+            <th class="narrow">Edit</th>
           </tr>
         </thead>
         <tbody>
           {% for account in accounts %}
           <tr>
-            <td class="nowrap"><a href="/accounts/{{ account.id }}">{{ account.name }}</a></td>
-            <td>{{ account.friendly }}</td>
-            <td>{% if account.owner_name.is_empty() %}{{ account.owner_email }}{% else %}{{ account.owner_name }}{%
+            <td class="narrow"><a href="/dashboard?account={{ account.id }}">{{ account.name }}</a></td>
+            <td class="narrow">{{ account.friendly }}</td>
+            <td class="narrow">{% if account.owner_name.is_empty() %}{{ account.owner_email }}{% else %}{{
+              account.owner_name }}{%
               endif %}</td>
             <td>{{ account.description }}</td>
+            <td class="narrow"><a href="/accounts/{{ account.id }}" data-history="none">Edit</a></td>
           </tr>
           {% endfor %}
         </tbody>

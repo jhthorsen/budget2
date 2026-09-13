@@ -1,29 +1,34 @@
-<details id="edit_category_details" class="section" {% if form_open %}open{% endif %}>
-  <summary role="button" class="secondary">{% if is_editing %}Edit category{% else %}Add category{% endif %}</summary>
-  <form method="post" action="/categories/{{ form.id }}">
-    <input type="hidden" name="id" value="{{ form.id }}">
-    <input type="hidden" name="user_id" value="0">
+<dialog id="dialog" open data-swap="morph:#dialog">
+  <article>
+    <header>
+      <h2>{% if is_editing %}Edit category{% else %}Add category{% endif %}</h2>
+    </header>
+    <form id="category_form" method="post" action="/categories/{{ form.id }}" data-history="none">
+      <input type="hidden" name="id" value="{{ form.id }}">
+      <input type="hidden" name="user_id" value="0">
 
-    <fieldset class="grid">
-      <label>
-        Name
-        <input type="text" name="name" minlength="3" maxlength="64" required value="{{ form.name }}"
-          placeholder="e.g. Food, Travel, Utilities">
-        <small>Should match the import category name.</small>
-      </label>
-    </fieldset>
+      <fieldset>
+        <label>
+          Name
+          <input type="text" name="name" minlength="3" maxlength="64" required value="{{ form.name }}"
+            placeholder="e.g. Food, Travel, Utilities">
+          <small>Should match the import category name.</small>
+        </label>
+      </fieldset>
 
-    <fieldset>
-      <label>
-        Description
-        <textarea name="description" rows="2"
-          placeholder="Optional — a brief note about this category.">{{ form.description }}</textarea>
-      </label>
-    </fieldset>
+      <fieldset>
+        <label>
+          Description
+          <textarea name="description" rows="2"
+            placeholder="Optional — a brief note about this category.">{{ form.description }}</textarea>
+        </label>
+      </fieldset>
 
-    <div class="form-footer">
-      <button type="submit" command="close" commandfor="edit_category_details">Cancel</button>
-      <button type="submit">{% if is_editing %}Save category{% else %}Add category{% endif %}</button>
-    </div>
-  </form>
-</details>
+    </form>
+    <footer>
+      <button type="submit" form="category_form">{% if is_editing %}Save category{% else %}Add category{% endif
+        %}</button>
+      <button type="button" class="secondary" on:load on:click="el.closest('dialog').close()">Cancel</button>
+    </footer>
+  </article>
+</dialog>
