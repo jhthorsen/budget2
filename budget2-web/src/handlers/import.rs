@@ -19,6 +19,21 @@ struct UploadSession {
     file_path: String,
 }
 
+async fn remove_active_upload(session: &tower_sessions::Session) -> Result<(), String> {
+    if let Some(upload) = session
+        .get::<UploadSession>("csv_upload")
+        .await
+        .map_err(|err| format!("Unable to read upload session: {err}"))?
+    {
+        std::fs::remove_file(upload.file_path).ok();
+    }
+    session
+        .remove::<UploadSession>("csv_upload")
+        .await
+        .map_err(|err| format!("Unable to clear upload session: {err}"))?;
+    Ok(())
+}
+
 #[derive(Template)]
 #[template(path = "import_upload_form.html")]
 struct UploadTemplate {
@@ -129,7 +144,11 @@ pub async fn upload_then_map_columns(
     let Some((file_id, path, headers)) = uploaded else {
         return Err("No CSV file uploaded".into());
     };
-    session
+    let previous_upload = session
+        .get::<UploadSession>("csv_upload")
+        .await
+        .map_err(|err| format!("Unable to read upload session: {err}"))?;
+    if let Err(err) = session
         .insert(
             "csv_upload",
             UploadSession {
@@ -138,9 +157,21 @@ pub async fn upload_then_map_columns(
             },
         )
         .await
-        .map_err(|err| format!("Unable to save upload session: {err}"))?;
+    {
+        std::fs::remove_file(&path).ok();
+        return Err(format!("Unable to save upload session: {err}").into());
+    }
+    if let Some(upload) = previous_upload {
+        std::fs::remove_file(upload.file_path).ok();
+    }
 
-    let suggestions = model::csv::suggest_columns(&path)?;
+    let suggestions = match model::csv::suggest_columns(&path) {
+        Ok(suggestions) => suggestions,
+        Err(err) => {
+            remove_active_upload(&session).await.ok();
+            return Err(err.into());
+        }
+    };
     let csrf_token = csrf_token(&session).await?;
     Ok(Html(
         MapTemplate {
@@ -201,7 +232,6 @@ pub async fn import_uploaded(
         mapping.value,
     )
     .await;
-    std::fs::remove_file(&path).ok();
-    session.remove::<UploadSession>("csv_upload").await.ok();
+    remove_active_upload(&session).await.ok();
     Ok(Html(ImportedTemplate { result: result? }.render()?).into_response())
 }

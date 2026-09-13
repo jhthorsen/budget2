@@ -1,0 +1,13 @@
+[Unit]
+Description=Remove expired Budget2 CSV uploads
+
+[Service]
+Type=oneshot
+User=budget2
+Group=budget2
+RuntimeDirectory=budget2
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ExecStart=/usr/bin/find /run/budget2 -xdev -type f -user budget2 -name budget2-upload-*.csv -mmin +60 -delete

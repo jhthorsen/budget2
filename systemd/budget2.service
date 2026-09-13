@@ -1,0 +1,27 @@
+[Unit]
+Description=Budget2 web application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=budget2
+Group=budget2
+WorkingDirectory=/var/lib/budget2
+Environment=TMPDIR=/run/budget2
+EnvironmentFile=-/etc/budget2/budget2.env
+ExecStart=/usr/bin/budget2-web
+Restart=on-failure
+RestartSec=5
+
+StateDirectory=budget2
+StateDirectoryMode=0750
+RuntimeDirectory=budget2
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
