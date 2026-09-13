@@ -4,6 +4,7 @@
       <h2>{% if is_editing %}Edit category{% else %}Add category{% endif %}</h2>
     </header>
     <form id="category_form" method="post" action="/categories/{{ form.id }}" data-history="none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="id" value="{{ form.id }}">
       <input type="hidden" name="user_id" value="0">
 

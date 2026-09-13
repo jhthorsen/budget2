@@ -8,6 +8,7 @@
       Required: a header row, date, description, and income or expense amount column.
     </p>
     <form id="import_form" action="/import/upload" method="post" enctype="multipart/form-data" data-history="none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label for="csv_file">CSV file</label>
       <input id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required>
     </form>

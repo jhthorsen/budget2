@@ -54,8 +54,8 @@ impl ImportRule {
             self.id,
             household_id
         )
-            .execute(pool)
-            .await?;
+        .execute(pool)
+        .await?;
         Ok(())
     }
 

@@ -52,7 +52,9 @@ async fn main() {
     let db = env_or("DATABASE_URL", "sqlite:local/budget2.db");
     tracing::info!("Connecting to database {db}");
     let skip_migrations = matches!(
-        env_or("SKIP_MIGRATIONS", "false").to_ascii_lowercase().as_str(),
+        env_or("SKIP_MIGRATIONS", "false")
+            .to_ascii_lowercase()
+            .as_str(),
         "1" | "true" | "yes"
     );
     if skip_migrations {

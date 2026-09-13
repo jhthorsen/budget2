@@ -9,6 +9,7 @@ pub struct CategoriesFormTemplate {
     user: model::User,
     form: model::Category,
     is_editing: bool,
+    csrf_token: String,
 }
 
 #[derive(Template)]
@@ -17,6 +18,7 @@ pub struct CategoriesListTemplate {
     ctx: RequestContext,
     user: model::User,
     categories: Vec<model::Category>,
+    csrf_token: String,
 }
 
 pub async fn edit(
@@ -37,12 +39,14 @@ pub async fn edit(
     } else {
         Some(model::Category::default())
     };
+    let csrf_token = csrf_token(&session).await?;
 
     let page = CategoriesFormTemplate {
         ctx,
         user,
         form: form.unwrap_or_default(),
         is_editing: id > 0,
+        csrf_token,
     };
 
     Ok(Html(page.render()?).into_response())
@@ -61,10 +65,12 @@ pub async fn list(
     }
 
     let categories = model::Category::all(&state.pool, membership.household_id).await?;
+    let csrf_token = csrf_token(&session).await?;
     let page = CategoriesListTemplate {
         ctx,
         user,
         categories,
+        csrf_token,
     };
 
     Ok(Html(page.render()?).into_response())
@@ -74,7 +80,7 @@ pub async fn save(
     ctx: RequestContext,
     session: tower_sessions::Session,
     State(state): State<AppState>,
-    Form(form): Form<model::Category>,
+    Form(form): Form<CsrfForm<model::Category>>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
@@ -83,13 +89,18 @@ pub async fn save(
         return Ok(axum::response::Redirect::to("/dashboard").into_response());
     }
 
-    form.save(&state.pool, membership.household_id).await?;
+    verify_csrf(&session, &form.csrf_token).await?;
+    form.value
+        .save(&state.pool, membership.household_id)
+        .await?;
 
     let categories = model::Category::all(&state.pool, membership.household_id).await?;
+    let csrf_token = csrf_token(&session).await?;
     let page = CategoriesListTemplate {
         ctx,
         user,
         categories,
+        csrf_token,
     };
 
     Ok(Html(page.render()?).into_response())

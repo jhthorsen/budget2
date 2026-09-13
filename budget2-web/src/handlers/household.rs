@@ -8,6 +8,7 @@ struct HouseholdTemplate {
     user: model::User,
     members: Vec<model::HouseholdMember>,
     is_manager: bool,
+    csrf_token: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,12 +26,14 @@ pub async fn get(
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
     let members = model::HouseholdMembership::members(&state.pool, membership.household_id).await?;
+    let csrf_token = csrf_token(&session).await?;
     Ok(Html(
         HouseholdTemplate {
             ctx,
             user,
             members,
             is_manager: matches!(membership.role, model::Role::Manager),
+            csrf_token,
         }
         .render()?,
     )
@@ -40,17 +43,18 @@ pub async fn get(
 pub async fn set_role(
     session: tower_sessions::Session,
     State(state): State<AppState>,
-    Form(form): Form<RoleForm>,
+    Form(form): Form<CsrfForm<RoleForm>>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
     };
+    verify_csrf(&session, &form.csrf_token).await?;
     model::HouseholdMembership::set_role(
         &state.pool,
         membership.household_id,
         user.id,
-        form.user_id,
-        model::Role::parse(&form.role),
+        form.value.user_id,
+        model::Role::parse(&form.value.role),
     )
     .await?;
     Ok(axum::response::Redirect::to("/household").into_response())

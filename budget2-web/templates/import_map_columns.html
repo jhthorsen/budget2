@@ -4,6 +4,7 @@
       <h2>Map CSV columns</h2>
     </header>
     <form id="import_form" action="/import/process" method="post" data-history="none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="file_id" value="{{ file_id }}">
       <div class="import-grid">
         <label>Date

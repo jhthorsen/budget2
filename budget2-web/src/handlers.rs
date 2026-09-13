@@ -18,7 +18,7 @@ pub fn routes(state: super::AppState) -> axum::Router {
     .route("/import/process", axum::routing::post(import::import_uploaded))
     .route("/auth/callback", axum::routing::get(auth::callback))
     .route("/auth/login", axum::routing::get(auth::login))
-    .route("/auth/logout", axum::routing::get(auth::logout))
+    .route("/auth/logout", axum::routing::post(auth::logout))
     .route("/accounts", axum::routing::get(accounts::list))
     .route("/accounts/:id", axum::routing::get(accounts::edit).post(accounts::save))
     .route("/categories", axum::routing::get(categories::list))

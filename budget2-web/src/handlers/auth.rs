@@ -154,7 +154,11 @@ pub async fn login() -> impl IntoResponse {
     axum::response::Redirect::to("/auth/callback?code=offline&state=unsafe")
 }
 
-pub async fn logout(session: tower_sessions::Session) -> impl IntoResponse {
+pub async fn logout(
+    session: tower_sessions::Session,
+    Form(form): Form<CsrfForm<()>>,
+) -> HttpResult {
+    verify_csrf(&session, &form.csrf_token).await?;
     session.delete().await.ok();
-    axum::response::Redirect::to("/")
+    Ok(axum::response::Redirect::to("/").into_response())
 }

@@ -9,6 +9,7 @@ pub struct AccountsFormTemplate {
     user: model::User,
     form: model::Account,
     owners: Vec<model::HouseholdMember>,
+    csrf_token: String,
 }
 
 #[derive(Template)]
@@ -17,6 +18,7 @@ pub struct AccountsListTemplate {
     ctx: RequestContext,
     user: model::User,
     accounts: Vec<model::Account>,
+    csrf_token: String,
 }
 
 pub async fn edit(
@@ -39,12 +41,14 @@ pub async fn edit(
         return Ok(axum::response::Redirect::to("/accounts").into_response());
     };
     let owners = model::HouseholdMembership::members(&state.pool, membership.household_id).await?;
+    let csrf_token = csrf_token(&session).await?;
 
     let page = AccountsFormTemplate {
         ctx,
         user,
         form,
         owners,
+        csrf_token,
     };
 
     Ok(Html(page.render()?).into_response())
@@ -63,10 +67,12 @@ pub async fn list(
     }
 
     let accounts = model::Account::all(&state.pool, membership.household_id).await?;
+    let csrf_token = csrf_token(&session).await?;
     let page = AccountsListTemplate {
         ctx,
         user,
         accounts,
+        csrf_token,
     };
 
     Ok(Html(page.render()?).into_response())
@@ -76,7 +82,7 @@ pub async fn save(
     ctx: RequestContext,
     session: tower_sessions::Session,
     State(state): State<AppState>,
-    Form(form): Form<model::Account>,
+    Form(form): Form<CsrfForm<model::Account>>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
@@ -85,13 +91,18 @@ pub async fn save(
         return Ok(axum::response::Redirect::to("/dashboard").into_response());
     }
 
-    form.save(&state.pool, membership.household_id).await?;
+    verify_csrf(&session, &form.csrf_token).await?;
+    form.value
+        .save(&state.pool, membership.household_id)
+        .await?;
 
     let accounts = model::Account::all(&state.pool, membership.household_id).await?;
+    let csrf_token = csrf_token(&session).await?;
     let page = AccountsListTemplate {
         ctx,
         user,
         accounts,
+        csrf_token,
     };
 
     Ok(Html(page.render()?).into_response())

@@ -93,6 +93,7 @@ pub struct DashboardTemplate {
     transaction_filter_categories: Vec<model::TransactionFilterOption>,
     filters: DashboardQuery,
     chart_series: Vec<ChartSeries>,
+    csrf_token: String,
 }
 
 /// Values rendered into the partial response used by infinite scrolling.
@@ -124,12 +125,14 @@ pub async fn get(
     .await?;
     let income = report.formatted_income();
     let expenses = report.formatted_expenses();
+    let csrf_token = csrf_token(&session).await?;
 
     let page = DashboardTemplate {
         ctx,
         user,
         filters: query,
         chart_series: chart_series(report.line_points),
+        csrf_token,
         formatted_income: income,
         formatted_expenses: expenses,
         transaction_count: report.transaction_count,

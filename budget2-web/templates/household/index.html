@@ -43,6 +43,7 @@
           {% if is_manager %}
           <td>
             <form method="post" action="/household/role">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="user_id" value="{{ member.user_id }}">
               <select name="role" on:load on:change="this.form.submit()">
                 <option value="member" {% if member.role==model::Role::Member %}selected{% endif %}>Member</option>

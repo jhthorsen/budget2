@@ -191,7 +191,12 @@
             <li><a href="/categories">Categories</a></li>
             <li><a href="/import_rules">Rules</a></li>
             <li><a href="/household">Household</a></li>
-            <li><a href="/auth/logout">Sign out</a></li>
+            <li>
+              <form method="post" action="/auth/logout">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="secondary">Sign out</button>
+              </form>
+            </li>
           </ul>
         </details>
       </li>

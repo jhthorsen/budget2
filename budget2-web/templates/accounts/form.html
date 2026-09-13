@@ -4,6 +4,7 @@
       <h2>Edit account</h2>
     </header>
     <form id="account_form" method="post" action="/accounts/{{ form.id }}" data-history="none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="id" value="{{ form.id }}">
 
       <fieldset>

@@ -5,6 +5,7 @@
     </header>
 
     <form id="import_rule_form" method="post" action="/import_rules/{{ form.id }}" data-history="none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="id" value="{{ form.id }}">
       <label>
         Category

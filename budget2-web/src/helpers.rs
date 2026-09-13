@@ -4,8 +4,17 @@ pub use axum::extract::{Form, Path, Query, State};
 use axum::http::StatusCode;
 pub use axum::response::{Html, IntoResponse, Response};
 pub use model::Pool;
+use rand::Rng;
+use serde::Deserialize;
 
 pub type HttpResult = Result<Response, ErrorTemplate>;
+
+#[derive(Deserialize)]
+pub struct CsrfForm<T> {
+    pub csrf_token: String,
+    #[serde(flatten)]
+    pub value: T,
+}
 
 #[derive(Template)]
 #[template(path = "error.html")]
@@ -77,6 +86,44 @@ pub fn env_or(key: &str, fallback: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| fallback.to_string())
 }
 
+pub async fn csrf_token(session: &tower_sessions::Session) -> Result<String, String> {
+    if let Some(token) = session
+        .get::<String>("csrf_token")
+        .await
+        .map_err(|err| err.to_string())?
+    {
+        return Ok(token);
+    }
+
+    let token: String = rand::rng()
+        .sample_iter(&rand::distr::Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+    session
+        .insert("csrf_token", &token)
+        .await
+        .map_err(|err| err.to_string())?;
+    session.save().await.map_err(|err| err.to_string())?;
+    Ok(token)
+}
+
+pub async fn verify_csrf(session: &tower_sessions::Session, token: &str) -> Result<(), String> {
+    let expected = session
+        .get::<String>("csrf_token")
+        .await
+        .map_err(|err| err.to_string())?;
+    if csrf_matches(expected.as_deref(), token) {
+        Ok(())
+    } else {
+        Err("Invalid CSRF token".to_string())
+    }
+}
+
+fn csrf_matches(expected: Option<&str>, token: &str) -> bool {
+    matches!(expected, Some(expected) if !expected.is_empty() && expected == token)
+}
+
 pub async fn get_current_user(
     pool: &Pool,
     session: &tower_sessions::Session,
@@ -102,6 +149,19 @@ pub async fn get_current_membership(
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "User is not a member of a household".to_string())?;
     Ok((user, membership))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::csrf_matches;
+
+    #[test]
+    fn csrf_requires_the_session_token() {
+        assert!(csrf_matches(Some("token"), "token"));
+        assert!(!csrf_matches(Some("token"), "other"));
+        assert!(!csrf_matches(None, "token"));
+        assert!(!csrf_matches(Some(""), ""));
+    }
 }
 
 pub fn is_manager(membership: &model::HouseholdMembership) -> bool {
