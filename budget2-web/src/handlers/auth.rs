@@ -14,6 +14,8 @@ pub struct AuthRequest {
 #[derive(Debug, Deserialize)]
 struct UserInfo {
     pub email: String,
+    #[serde(default)]
+    pub email_verified: bool,
     pub name: Option<String>,
     #[serde(alias = "sub")]
     pub id: String,
@@ -24,6 +26,9 @@ pub async fn callback(
     State(state): State<AppState>,
     session: tower_sessions::Session,
 ) -> HttpResult {
+    #[cfg(feature = "offline")]
+    let _ = &query.code;
+
     #[cfg(not(feature = "offline"))]
     {
         let expected_state: Option<String> = session
@@ -64,11 +69,12 @@ pub async fn callback(
     let info = UserInfo {
         id: std::env::var("OFFLINE_OIDC_ID").unwrap(),
         email: std::env::var("OFFLINE_OIDC_EMAIL").unwrap(),
+        email_verified: true,
         name: std::env::var("OFFLINE_OIDC_NAME").ok(),
     };
 
     #[cfg(feature = "offline")]
-    let provider = query.code.to_string();
+    let provider = "offline";
     #[cfg(not(feature = "offline"))]
     let provider = state
         .oauth_client
@@ -77,11 +83,19 @@ pub async fn callback(
         .host_str()
         .unwrap_or("default");
 
-    let user = match model::User::by_email(&state.pool, &info.email).await? {
-        Some(mut user) => {
-            user.oauth_id = info.id;
-            user.oauth_provider = provider.to_string();
-            user.save(&state.pool).await?
+    if !info.email_verified {
+        return Err("The identity provider did not verify this email address".into());
+    }
+
+    let user = match model::User::by_oauth_identity(&state.pool, provider, &info.id).await? {
+        Some(user) => user,
+        None if model::User::by_email(&state.pool, &info.email)
+            .await?
+            .is_some() =>
+        {
+            return Err(
+                "This email address is already associated with another sign-in identity".into(),
+            );
         }
         None => {
             let user = model::User {

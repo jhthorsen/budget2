@@ -11,6 +11,21 @@ pub struct User {
 }
 
 impl User {
+    pub async fn by_oauth_identity(
+        pool: &Pool,
+        oauth_provider: &str,
+        oauth_id: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            User,
+            "select id as 'id!', email, name, oauth_provider, oauth_id from users where oauth_provider = ? and oauth_id = ?",
+            oauth_provider,
+            oauth_id
+        )
+        .fetch_optional(pool)
+        .await
+    }
+
     pub async fn by_email(pool: &Pool, email: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             User,
@@ -75,5 +90,40 @@ impl User {
 
     fn validate(&self) -> Result<(), sqlx::Error> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn finds_users_by_provider_subject() {
+        let pool = crate::build_pool("sqlite::memory:", true).await.unwrap();
+        let user = User {
+            email: "user@example.com".into(),
+            name: "User".into(),
+            oauth_provider: "https://issuer.example.com".into(),
+            oauth_id: "subject-1".into(),
+            ..Default::default()
+        }
+        .save(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(
+            User::by_oauth_identity(&pool, "https://issuer.example.com", "subject-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            user.id
+        );
+        assert!(
+            User::by_oauth_identity(&pool, "https://other.example.com", "subject-1")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }
