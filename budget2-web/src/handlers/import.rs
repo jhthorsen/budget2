@@ -205,7 +205,7 @@ mod tests {
 pub async fn import_uploaded(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    Form(mapping): Form<CsrfForm<model::ColumnMapping>>,
+    Form(mapping): Form<model::ColumnMapping>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(Redirect::to("/auth/login").into_response());
@@ -219,19 +219,14 @@ pub async fn import_uploaded(
         .await
         .map_err(|err| format!("Unable to read upload session: {err}"))?
         .ok_or("No active CSV upload")?;
-    if upload.file_id != mapping.value.file_id {
+    if upload.file_id != mapping.file_id {
         return Err("CSV upload session mismatch".into());
     }
 
     let path = PathBuf::from(&upload.file_path);
-    let result = model::csv::import_csv_file(
-        &state.pool,
-        &user,
-        membership.household_id,
-        &path,
-        mapping.value,
-    )
-    .await;
+    let result =
+        model::csv::import_csv_file(&state.pool, &user, membership.household_id, &path, mapping)
+            .await;
     remove_active_upload(&session).await.ok();
     Ok(Html(ImportedTemplate { result: result? }.render()?).into_response())
 }

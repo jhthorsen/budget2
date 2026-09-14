@@ -156,7 +156,7 @@ pub async fn login() -> impl IntoResponse {
 
 pub async fn logout(
     session: tower_sessions::Session,
-    Form(form): Form<CsrfForm<()>>,
+    Form(form): Form<CsrfTokenForm>,
 ) -> HttpResult {
     verify_csrf(&session, &form.csrf_token).await?;
     session.delete().await.ok();

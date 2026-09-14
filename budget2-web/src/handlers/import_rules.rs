@@ -1,4 +1,14 @@
 use crate::helpers::*;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub(super) struct ImportRuleForm {
+    csrf_token: String,
+    id: i64,
+    category_id: String,
+    priority: i64,
+    match_description: Option<String>,
+}
 
 #[derive(Template)]
 #[template(path = "import_rules/form.html")]
@@ -83,7 +93,7 @@ pub async fn save(
     ctx: RequestContext,
     session: tower_sessions::Session,
     State(state): State<AppState>,
-    Form(form): Form<CsrfForm<model::ImportRule>>,
+    Form(form): Form<ImportRuleForm>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
@@ -93,7 +103,16 @@ pub async fn save(
     }
 
     verify_csrf(&session, &form.csrf_token).await?;
-    let mut rule = form.value;
+    let mut rule = model::ImportRule {
+        id: form.id,
+        category_id: (!form.category_id.is_empty())
+            .then(|| form.category_id.parse())
+            .transpose()
+            .map_err(|_| "Invalid category")?,
+        priority: form.priority,
+        match_description: form.match_description,
+        ..Default::default()
+    };
     rule.household_id = membership.household_id;
     rule.save(&state.pool, membership.household_id).await?;
 
@@ -114,7 +133,7 @@ pub async fn delete(
     session: tower_sessions::Session,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Form(form): Form<CsrfForm<()>>,
+    Form(form): Form<CsrfTokenForm>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());

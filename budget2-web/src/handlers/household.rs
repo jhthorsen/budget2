@@ -13,6 +13,7 @@ struct HouseholdTemplate {
 
 #[derive(Debug, Deserialize)]
 pub struct RoleForm {
+    csrf_token: String,
     user_id: i64,
     role: String,
 }
@@ -43,7 +44,7 @@ pub async fn get(
 pub async fn set_role(
     session: tower_sessions::Session,
     State(state): State<AppState>,
-    Form(form): Form<CsrfForm<RoleForm>>,
+    Form(form): Form<RoleForm>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
@@ -53,8 +54,8 @@ pub async fn set_role(
         &state.pool,
         membership.household_id,
         user.id,
-        form.value.user_id,
-        model::Role::parse(&form.value.role),
+        form.user_id,
+        model::Role::parse(&form.role),
     )
     .await?;
     Ok(axum::response::Redirect::to("/household").into_response())

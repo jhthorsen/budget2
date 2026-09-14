@@ -7,6 +7,8 @@ use std::{collections::HashMap, fs, io::Cursor, path::Path};
 
 #[derive(Debug, Deserialize)]
 pub struct ColumnMapping {
+    #[serde(default)]
+    pub csrf_token: String,
     pub file_id: String,
     pub date_column: String,
     pub date_format: Option<String>,
@@ -643,6 +645,7 @@ mod tests {
             .await
             .unwrap();
         let mapping = ColumnMapping {
+            csrf_token: String::new(),
             file_id: String::new(),
             date_column: "Date".into(),
             date_format: None,

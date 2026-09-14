@@ -10,10 +10,8 @@ use serde::Deserialize;
 pub type HttpResult = Result<Response, ErrorTemplate>;
 
 #[derive(Deserialize)]
-pub struct CsrfForm<T> {
+pub struct CsrfTokenForm {
     pub csrf_token: String,
-    #[serde(flatten)]
-    pub value: T,
 }
 
 #[derive(Template)]

@@ -1,4 +1,28 @@
 use crate::helpers::*;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub(super) struct AccountForm {
+    csrf_token: String,
+    id: i64,
+    user_id: i64,
+    name: String,
+    friendly: String,
+    description: String,
+}
+
+impl From<AccountForm> for model::Account {
+    fn from(form: AccountForm) -> Self {
+        Self {
+            id: form.id,
+            user_id: form.user_id,
+            name: form.name,
+            friendly: form.friendly,
+            description: form.description,
+            ..Default::default()
+        }
+    }
+}
 
 #[derive(Template)]
 #[template(path = "accounts/form.html")]
@@ -82,7 +106,7 @@ pub async fn save(
     ctx: RequestContext,
     session: tower_sessions::Session,
     State(state): State<AppState>,
-    Form(form): Form<CsrfForm<model::Account>>,
+    Form(form): Form<AccountForm>,
 ) -> HttpResult {
     let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
         return Ok(axum::response::Redirect::to("/auth/login").into_response());
@@ -92,7 +116,7 @@ pub async fn save(
     }
 
     verify_csrf(&session, &form.csrf_token).await?;
-    form.value
+    model::Account::from(form)
         .save(&state.pool, membership.household_id)
         .await?;
 
