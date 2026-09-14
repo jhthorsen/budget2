@@ -1,8 +1,9 @@
 use crate::{ImportRule, Pool, User};
 use chrono::NaiveDate;
 use csv::{ReaderBuilder, StringRecord};
+use encoding_rs::SHIFT_JIS;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, fs, io::Cursor, path::Path};
 
 #[derive(Debug, Deserialize)]
 pub struct ColumnMapping {
@@ -83,11 +84,7 @@ pub struct ColumnSuggestions {
 
 pub fn read_csv_headers(path: &Path) -> Result<Vec<String>, String> {
     let delimiter = detect_delimiter(path)?;
-    let mut reader = ReaderBuilder::new()
-        .delimiter(delimiter)
-        .has_headers(true)
-        .from_path(path)
-        .map_err(|err| err.to_string())?;
+    let mut reader = csv_reader(path, delimiter)?;
     reader
         .headers()
         .map(|headers| headers.iter().map(str::to_owned).collect())
@@ -96,11 +93,7 @@ pub fn read_csv_headers(path: &Path) -> Result<Vec<String>, String> {
 
 pub fn suggest_columns(path: &Path) -> Result<ColumnSuggestions, String> {
     let delimiter = detect_delimiter(path)?;
-    let mut reader = ReaderBuilder::new()
-        .delimiter(delimiter)
-        .has_headers(true)
-        .from_path(path)
-        .map_err(|err| err.to_string())?;
+    let mut reader = csv_reader(path, delimiter)?;
     let headers: Vec<String> = reader
         .headers()
         .map_err(|err| err.to_string())?
@@ -191,11 +184,7 @@ pub async fn import_csv_file(
         return Err("Date, description, and at least one amount column are required".to_string());
     }
 
-    let mut reader = ReaderBuilder::new()
-        .delimiter(detect_delimiter(path)?)
-        .has_headers(true)
-        .from_path(path)
-        .map_err(|err| err.to_string())?;
+    let mut reader = csv_reader(path, detect_delimiter(path)?)?;
     let headers = reader.headers().map_err(|err| err.to_string())?.clone();
     let mapping = mapping.with_header_map(
         headers
@@ -458,19 +447,82 @@ fn scaled_amount(amount: f64, multiplier: f64) -> Result<f64, String> {
 }
 
 fn detect_delimiter(path: &Path) -> Result<u8, String> {
+    let text = csv_text(fs::read(path).map_err(|err| err.to_string())?)?;
     let mut best = (b',', 0);
     for delimiter in [b',', b';', b'\t', b'|'] {
-        let mut reader = ReaderBuilder::new()
+        let columns = ReaderBuilder::new()
             .delimiter(delimiter)
-            .has_headers(true)
-            .from_path(path)
-            .map_err(|err| err.to_string())?;
-        let columns = reader.headers().map_err(|err| err.to_string())?.len();
+            .has_headers(false)
+            .flexible(true)
+            .from_reader(Cursor::new(&text))
+            .records()
+            .filter_map(Result::ok)
+            .map(|record| record.len())
+            .max()
+            .unwrap_or_default();
         if columns > best.1 {
             best = (delimiter, columns);
         }
     }
     Ok(best.0)
+}
+
+fn csv_reader(path: &Path, delimiter: u8) -> Result<csv::Reader<Cursor<String>>, String> {
+    let text = csv_text(fs::read(path).map_err(|err| err.to_string())?)?;
+    Ok(ReaderBuilder::new()
+        .delimiter(delimiter)
+        .has_headers(true)
+        .flexible(true)
+        .from_reader(Cursor::new(table_csv(text, delimiter)?)))
+}
+
+fn table_csv(text: String, delimiter: u8) -> Result<String, String> {
+    let mut source = ReaderBuilder::new()
+        .delimiter(delimiter)
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(Cursor::new(text));
+    let mut records = Vec::new();
+    let mut first_widest = 0;
+    let mut widest = 0;
+    for record in source.records() {
+        let record = record.map_err(|err| err.to_string())?;
+        if record.len() > widest {
+            widest = record.len();
+            first_widest = records.len();
+        }
+        records.push(record);
+    }
+    let mut csv = csv::WriterBuilder::new()
+        .delimiter(delimiter)
+        .from_writer(Vec::new());
+    for record in records
+        .into_iter()
+        .skip(first_widest)
+        .filter(|record| record.len() == widest)
+    {
+        csv.write_record(record.iter())
+            .map_err(|err| err.to_string())?;
+    }
+    String::from_utf8(csv.into_inner().map_err(|err| err.to_string())?)
+        .map_err(|err| err.to_string())
+}
+
+fn csv_text(bytes: Vec<u8>) -> Result<String, String> {
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) => {
+            let bytes = error.into_bytes();
+            let (text, _, had_errors) = SHIFT_JIS.decode(&bytes);
+            if had_errors {
+                return Err("CSV must be valid UTF-8 or Shift_JIS".to_string());
+            }
+            text.into_owned()
+        }
+    }
+    .replace("\r\n", "\n")
+    .replace('\r', "\n");
+    Ok(text)
 }
 
 fn normalize_date(value: &str, format: Option<&str>) -> Result<String, String> {
@@ -554,6 +606,27 @@ mod tests {
             "2026-01-02"
         );
         assert!(normalize_date("not-a-date", None).is_err());
+    }
+
+    #[test]
+    fn decodes_shift_jis_csv() {
+        let (encoded, _, _) = SHIFT_JIS.encode("利用日,利用内容\r2024/11/1,東京ガス\r");
+        assert_eq!(
+            csv_text(encoded.into_owned()).unwrap(),
+            "利用日,利用内容\n2024/11/1,東京ガス\n"
+        );
+    }
+
+    #[test]
+    fn skips_csv_preamble_before_widest_table() {
+        let table = table_csv(
+            "Card statement\nCard,Number\nGold,1234\nDate,Description,Amount\n2024/11/1,Coffee,500\nFooter\n"
+                .into(),
+            b',',
+        )
+        .unwrap();
+        assert!(table.starts_with("Date,Description,Amount\n2024/11/1,Coffee,500\n"));
+        assert!(!table.contains("Footer"));
     }
 
     #[tokio::test]

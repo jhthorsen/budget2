@@ -14,6 +14,7 @@ version.workspace = true
 [dependencies]
 chrono.workspace = true
 csv.workspace = true
+encoding_rs.workspace = true
 macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true
