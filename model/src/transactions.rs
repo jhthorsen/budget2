@@ -139,7 +139,8 @@ impl Dashboard {
               and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?))
               and (? is null or t.processed_at like ? || '%')
               and (? is null or instr(lower(t.description), lower(?)) > 0)
-              and (? is null or t.account_id = ?)
+              and (? is null or coalesce(nullif(a.friendly, ''), a.name) =
+                (select coalesce(nullif(friendly, ''), name) from accounts where id = ? and household_id = ?))
               and (? is null or (? = 0 and t.category_id is null) or t.category_id = ?)
               and (? is null or t.amount >= ?)"#,
         )
@@ -155,6 +156,7 @@ impl Dashboard {
             .bind(filters.description)
             .bind(filters.account_id)
             .bind(filters.account_id)
+            .bind(household_id)
             .bind(filters.category_id)
             .bind(filters.category_id)
             .bind(filters.category_id)
@@ -181,8 +183,9 @@ impl Dashboard {
         role: super::Role,
     ) -> Result<(Vec<TransactionFilterOption>, Vec<TransactionFilterOption>), sqlx::Error> {
         let accounts = sqlx::query_as::<_, TransactionFilterOption>(
-            r#"select id, coalesce(nullif(friendly, ''), name) as name
-            from accounts where household_id = ? and (? != 'member' or user_id = ?) order by name"#,
+            r#"select min(id) as id, coalesce(nullif(friendly, ''), name) as name
+            from accounts where household_id = ? and (? != 'member' or user_id = ?)
+            group by coalesce(nullif(friendly, ''), name) order by name"#,
         )
         .bind(household_id)
         .bind(role.as_str())
@@ -221,10 +224,12 @@ impl Dashboard {
                 t.type as transaction_type, coalesce(group_concat(distinct nullif(trim(t.original_currency), '')), '') as original_currency,
                 sum(t.amount) as amount from transactions t left join categories c on c.id = t.category_id
                 join accounts a on a.id = t.account_id
-                where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?)) and t.account_id = ? and t.processed_at >= ? and t.processed_at < ?
+                where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?))
+                and coalesce(nullif(a.friendly, ''), a.name) = (select coalesce(nullif(friendly, ''), name) from accounts where id = ? and household_id = ?)
+                and t.processed_at >= ? and t.processed_at < ?
                 group by t.processed_at, t.category_id, t.type order by day, series, transaction_type"#,
             )
-            .bind(household_id).bind(role.as_str()).bind(role.as_str()).bind(viewer_id).bind(role.as_str()).bind(viewer_id).bind(account_id).bind(&start).bind(&end)
+            .bind(household_id).bind(role.as_str()).bind(role.as_str()).bind(viewer_id).bind(role.as_str()).bind(viewer_id).bind(account_id).bind(household_id).bind(&start).bind(&end)
             .fetch_all(pool).await
         } else {
             sqlx::query_as::<_, LinePoint>(
@@ -232,7 +237,7 @@ impl Dashboard {
                 t.type as transaction_type, coalesce(group_concat(distinct nullif(trim(t.original_currency), '')), '') as original_currency,
                 sum(t.amount) as amount from transactions t join accounts a on a.id = t.account_id
                 where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?)) and t.processed_at >= ? and t.processed_at < ?
-                group by t.processed_at, a.id, t.type order by day, series, transaction_type"#,
+                group by t.processed_at, coalesce(nullif(a.friendly, ''), a.name), t.type order by day, series, transaction_type"#,
             )
             .bind(household_id).bind(role.as_str()).bind(role.as_str()).bind(viewer_id).bind(role.as_str()).bind(viewer_id).bind(&start).bind(&end)
             .fetch_all(pool).await
@@ -264,7 +269,8 @@ impl Dashboard {
             where a.household_id = ? and (? = 'manager' or (? = 'assistant' and t.imported_by_user_id = ?) or (? = 'member' and a.user_id = ?))
               and (? is null or t.processed_at like ? || '%')
               and (? is null or instr(lower(t.description), lower(?)) > 0)
-              and (? is null or t.account_id = ?)
+              and (? is null or coalesce(nullif(a.friendly, ''), a.name) =
+                (select coalesce(nullif(friendly, ''), name) from accounts where id = ? and household_id = ?))
               and (? is null or (? = 0 and t.category_id is null) or t.category_id = ?)
               and (? is null or t.amount >= ?)
             order by t.processed_at desc, t.id desc
@@ -282,6 +288,7 @@ impl Dashboard {
         .bind(filters.description)
         .bind(filters.account_id)
         .bind(filters.account_id)
+        .bind(household_id)
         .bind(filters.category_id)
         .bind(filters.category_id)
         .bind(filters.category_id)
@@ -402,5 +409,38 @@ mod tests {
             assert_eq!(report.line_points[1].original_currency, "EUR");
             assert!(report.line_points[2].original_currency.is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn groups_accounts_with_the_same_friendly_name() {
+        let pool = crate::build_pool("sqlite::memory:", true).await.unwrap();
+        for statement in [
+            "insert into users (id, email, name, oauth_provider, oauth_id) values (1, 'group@example.com', 'Group', 'test', 'group')",
+            "insert into households (id, name) values (1, 'Family')",
+            "insert into accounts (id, user_id, household_id, name, friendly) values (1, 1, 1, 'Checking-1', 'Checking'), (2, 1, 1, 'Checking-2', 'Checking')",
+            "insert into transactions (user_id, account_id, type, amount, original_amount, description, processed_at) values (1, 1, 'expense', 10, 10, 'One', '2026-01-01'), (1, 2, 'expense', 20, 20, 'Two', '2026-01-01')",
+        ] {
+            sqlx::query(statement).execute(&pool).await.unwrap();
+        }
+
+        let filters = TransactionFilters {
+            account_id: Some(1),
+            ..Default::default()
+        };
+        let report = Dashboard::report(&pool, 1, 1, crate::Role::Manager, filters)
+            .await
+            .unwrap();
+        assert_eq!(report.transaction_filter_accounts.len(), 1);
+        assert_eq!(report.transaction_filter_accounts[0].name, "Checking");
+        assert_eq!(report.transaction_count, 2);
+        assert_eq!(report.expenses, 30.0);
+        assert_eq!(report.line_points.len(), 1);
+        assert_eq!(report.line_points[0].amount, 30.0);
+
+        let transactions =
+            Dashboard::transactions(&pool, 1, 1, crate::Role::Manager, filters, 0, 60)
+                .await
+                .unwrap();
+        assert_eq!(transactions.transactions.len(), 2);
     }
 }
