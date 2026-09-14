@@ -44,6 +44,7 @@ Set `SECURE_SESSION=true` (the default) when the app is served over HTTPS.
 
 ```sh
 docker run --rm -p 3000:3000 \
+  -v budget2-data:/app/local \
   -e OIDC_CLIENT_ID \
   -e OIDC_CLIENT_SECRET \
   -e OIDC_DISCOVERY_URL \
@@ -51,7 +52,7 @@ docker run --rm -p 3000:3000 \
   ghcr.io/jhthorsen/budget2:latest
 ```
 
-Mount `/app/local` if the SQLite database must persist across container replacements.
+The `budget2-data` volume keeps the SQLite database across container replacements.
 
 ## Development
 
