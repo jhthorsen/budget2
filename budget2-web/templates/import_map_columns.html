@@ -3,7 +3,9 @@
     <header>
       <h2>Map CSV columns</h2>
     </header>
-    <form id="import_form" action="/import/process" method="post" data-history="none">
+    <form id="import_form" action="/import/process" method="post" data-history="none"
+      on:load="let saved; try { saved = JSON.parse(localStorage.getItem('budget2.csv-mapping') || 'null') } catch {} const selects = [...el.querySelectorAll('select')]; if (saved && selects.every(select => saved[select.name] != null && [...select.options].some(option => option.value === saved[select.name]))) selects.forEach(select => select.value = saved[select.name])"
+      on:submit="try { localStorage.setItem('budget2.csv-mapping', JSON.stringify(Object.fromEntries([...el.querySelectorAll('select')].map(select => [select.name, select.value])))) } catch {}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="file_id" value="{{ file_id }}">
       <div class="import-grid">
