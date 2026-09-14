@@ -3,7 +3,7 @@
     <header>
       <h2>Import results</h2>
     </header>
-    <p>Imported {{ result.successful }} of {{ result.total_rows }} rows.</p>
+    <p>Imported {{ result.successful }} of {{ result.total_rows }} rows.{% if result.skipped > 0 %} Skipped {{ result.skipped }} duplicate rows.{% endif %}</p>
     {% if !result.errors.is_empty() %}
     <h3>Rows with errors</h3>
     <figure>

@@ -60,6 +60,7 @@ pub struct ImportError {
 pub struct ImportResult {
     pub total_rows: usize,
     pub successful: usize,
+    pub skipped: usize,
     pub errors: Vec<ImportError>,
 }
 
@@ -219,6 +220,7 @@ pub async fn import_csv_file(
     let mut result = ImportResult {
         total_rows: 0,
         successful: 0,
+        skipped: 0,
         errors: Vec::new(),
     };
     for (index, record) in reader.records().enumerate() {
@@ -247,8 +249,9 @@ pub async fn import_csv_file(
         )
         .await
         {
-            Ok(true) => result.successful += 1,
-            Ok(false) => result.errors.push(ImportError {
+            Ok(ImportRow::Imported) => result.successful += 1,
+            Ok(ImportRow::Skipped) => result.skipped += 1,
+            Ok(ImportRow::NoAmount) => result.errors.push(ImportError {
                 row_number,
                 row_data: format!("{record:?}"),
                 error: "No valid amount found".to_string(),
@@ -263,6 +266,13 @@ pub async fn import_csv_file(
     Ok(result)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ImportRow {
+    Imported,
+    Skipped,
+    NoAmount,
+}
+
 async fn import_row(
     pool: &Pool,
     user: &User,
@@ -271,7 +281,7 @@ async fn import_row(
     mapping: &ColumnMapping,
     rules: &[ImportRule],
     multiplier: f64,
-) -> Result<bool, String> {
+) -> Result<ImportRow, String> {
     let date = normalize_date(
         mapping.value(record, &mapping.date_column)?,
         mapping
@@ -326,7 +336,7 @@ async fn import_row(
         return Err("No account selected or matched by an import rule".to_string());
     }
 
-    let mut imported = false;
+    let mut result = ImportRow::NoAmount;
     for (column, kind) in [
         (&mapping.income_column, "income"),
         (&mapping.expense_column, "expense"),
@@ -342,24 +352,40 @@ async fn import_row(
         } else {
             "income"
         };
-        sqlx::query(
-            "insert into transactions (user_id, imported_by_user_id, account_id, category_id, type, amount, original_amount, description, source, processed_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'csv', ?)",
+        let amount = scaled_amount(original_amount, multiplier)?;
+        let inserted = sqlx::query(
+            "insert into transactions (user_id, imported_by_user_id, account_id, category_id, type, amount, original_amount, description, source, processed_at)
+             select ?, ?, ?, ?, ?, ?, ?, ?, 'csv', ?
+             where not exists (select 1 from transactions where source = 'csv' and account_id = ? and processed_at = ? and type = ? and amount = ? and description = ?)",
         )
         .bind(user.id)
         .bind(user.id)
         .bind(account_id)
         .bind(category_id)
         .bind(transaction_type)
-        .bind(scaled_amount(original_amount, multiplier)?)
+        .bind(amount)
         .bind(original_amount)
         .bind(description)
         .bind(&date)
+        .bind(account_id)
+        .bind(&date)
+        .bind(transaction_type)
+        .bind(amount)
+        .bind(description)
         .execute(pool)
         .await
-        .map_err(|err| err.to_string())?;
-        imported = true;
+        .map_err(|err| err.to_string())?
+        .rows_affected()
+            > 0;
+        result = if inserted {
+            ImportRow::Imported
+        } else if result == ImportRow::NoAmount {
+            ImportRow::Skipped
+        } else {
+            result
+        };
     }
-    Ok(imported)
+    Ok(result)
 }
 
 async fn account_id(
@@ -528,5 +554,60 @@ mod tests {
             "2026-01-02"
         );
         assert!(normalize_date("not-a-date", None).is_err());
+    }
+
+    #[tokio::test]
+    async fn skips_duplicate_imported_transactions() {
+        let pool = crate::build_pool("sqlite::memory:", true).await.unwrap();
+        let user = User {
+            id: 1,
+            ..Default::default()
+        };
+        sqlx::query("insert into users (id, email, name, oauth_provider, oauth_id) values (1, 'user@example.com', 'User', 'test', 'user')")
+            .execute(&pool).await.unwrap();
+        sqlx::query("insert into households (id, name) values (1, 'Home')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let mapping = ColumnMapping {
+            file_id: String::new(),
+            date_column: "Date".into(),
+            date_format: None,
+            income_column: String::new(),
+            expense_column: "Amount".into(),
+            description_column: "Description".into(),
+            account_column: Some("Account".into()),
+            account_fixed_name: None,
+            category_column: None,
+            currency_multiplier: None,
+            header_map: [
+                ("Date".into(), 0),
+                ("Description".into(), 1),
+                ("Amount".into(), 2),
+                ("Account".into(), 3),
+            ]
+            .into(),
+        };
+        let record = StringRecord::from(vec!["2026-01-01", "Coffee", "10", "Checking"]);
+
+        assert_eq!(
+            import_row(&pool, &user, 1, &record, &mapping, &[], 1.0)
+                .await
+                .unwrap(),
+            ImportRow::Imported
+        );
+        assert_eq!(
+            import_row(&pool, &user, 1, &record, &mapping, &[], 1.0)
+                .await
+                .unwrap(),
+            ImportRow::Skipped
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("select count(*) from transactions")
+                .fetch_one(&pool)
+                .await
+                .unwrap(),
+            1
+        );
     }
 }
