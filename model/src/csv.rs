@@ -5,6 +5,8 @@ use encoding_rs::SHIFT_JIS;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, io::Cursor, path::Path};
 
+const ACCOUNT_HEADING: &str = "FROM_HEADING_ROW";
+
 #[derive(Debug, Deserialize)]
 pub struct ColumnMapping {
     #[serde(default)]
@@ -114,7 +116,15 @@ pub fn suggest_columns(path: &Path) -> Result<ColumnSuggestions, String> {
             .cloned()
             .unwrap_or_default()
     };
-    let date_column = find(&["date", "dato", "processed", "booked"]);
+    let date_column = find(&["date", "dato", "processed", "booked", "ご利用日"]);
+    let description_column = find(&[
+        "description",
+        "forklaring",
+        "beskrivelse",
+        "memo",
+        "text",
+        "ご利用店名",
+    ]);
     let date_formats = if date_column.is_empty() {
         Vec::new()
     } else {
@@ -152,12 +162,19 @@ pub fn suggest_columns(path: &Path) -> Result<ColumnSuggestions, String> {
         }
     };
 
-    Ok(ColumnSuggestions {
-        date_column,
-        description_column: find(&["description", "forklaring", "beskrivelse", "memo", "text"]),
-        income_column: find(&["income", "credit", "inntekt", "deposit", "inn ", "inn paa"]),
-        expense_column: find(&["expense", "debit", "kostnad", "withdrawal", "ut ", "ut av"]),
-        account_column: headers
+    let account_column = if samples.iter().any(|record| {
+        record
+            .get(
+                headers
+                    .iter()
+                    .position(|header| header == &description_column)
+                    .unwrap_or(0),
+            )
+            .is_some_and(is_account_heading)
+    }) {
+        ACCOUNT_HEADING.to_string()
+    } else {
+        headers
             .iter()
             .find(|header| {
                 let header = header.to_lowercase();
@@ -166,7 +183,23 @@ pub fn suggest_columns(path: &Path) -> Result<ColumnSuggestions, String> {
                     && !header.contains("ut ")
             })
             .cloned()
-            .unwrap_or_default(),
+            .unwrap_or_default()
+    };
+
+    Ok(ColumnSuggestions {
+        date_column,
+        description_column,
+        income_column: find(&["income", "credit", "inntekt", "deposit", "inn ", "inn paa"]),
+        expense_column: find(&[
+            "expense",
+            "debit",
+            "kostnad",
+            "withdrawal",
+            "ut ",
+            "ut av",
+            "ご利用金額",
+        ]),
+        account_column,
         category_column: find(&["category", "kategori"]),
         date_formats,
     })
@@ -214,12 +247,13 @@ pub async fn import_csv_file(
         skipped: 0,
         errors: Vec::new(),
     };
+    let mut account_heading = None;
     for (index, record) in reader.records().enumerate() {
         let row_number = index + 2;
-        result.total_rows += 1;
         let record = match record {
             Ok(record) => record,
             Err(err) => {
+                result.total_rows += 1;
                 result.errors.push(ImportError {
                     row_number,
                     row_data: "Unable to read row".to_string(),
@@ -229,12 +263,25 @@ pub async fn import_csv_file(
             }
         };
 
+        if mapping.account_column.as_deref() == Some(ACCOUNT_HEADING) {
+            if let Some(name) = mapping
+                .value(&record, &mapping.description_column)
+                .ok()
+                .and_then(account_heading_name)
+            {
+                account_heading = Some(name.to_string());
+                continue;
+            }
+        }
+        result.total_rows += 1;
+
         match import_row(
             pool,
             user,
             household_id,
             &record,
             &mapping,
+            account_heading.as_deref(),
             &rules,
             multiplier,
         )
@@ -270,6 +317,7 @@ async fn import_row(
     household_id: i64,
     record: &StringRecord,
     mapping: &ColumnMapping,
+    account_heading: Option<&str>,
     rules: &[ImportRule],
     multiplier: f64,
 ) -> Result<ImportRow, String> {
@@ -285,8 +333,8 @@ async fn import_row(
         return Err("Description is empty".to_string());
     }
 
-    let account_name = mapping
-        .optional_value(record, mapping.account_column.as_deref())
+    let account_name = account_heading
+        .or_else(|| mapping.optional_value(record, mapping.account_column.as_deref()))
         .or_else(|| {
             mapping
                 .account_fixed_name
@@ -377,6 +425,18 @@ async fn import_row(
         };
     }
     Ok(result)
+}
+
+fn is_account_heading(value: &str) -> bool {
+    account_heading_name(value).is_some()
+}
+
+fn account_heading_name(value: &str) -> Option<&str> {
+    value
+        .trim()
+        .strip_prefix('【')?
+        .strip_suffix('】')
+        .map(str::trim)
 }
 
 async fn account_id(
@@ -528,6 +588,7 @@ fn csv_text(bytes: Vec<u8>) -> Result<String, String> {
 }
 
 fn normalize_date(value: &str, format: Option<&str>) -> Result<String, String> {
+    let value = value.trim().replace(['年', '月'], "-").replace('日', "");
     let value = value.trim();
     let parts: Vec<_> = value
         .split(|character: char| matches!(character, '.' | '/' | '-'))
@@ -667,13 +728,13 @@ mod tests {
         let record = StringRecord::from(vec!["2026-01-01", "Coffee", "10", "Checking"]);
 
         assert_eq!(
-            import_row(&pool, &user, 1, &record, &mapping, &[], 1.0)
+            import_row(&pool, &user, 1, &record, &mapping, None, &[], 1.0)
                 .await
                 .unwrap(),
             ImportRow::Imported
         );
         assert_eq!(
-            import_row(&pool, &user, 1, &record, &mapping, &[], 1.0)
+            import_row(&pool, &user, 1, &record, &mapping, None, &[], 1.0)
                 .await
                 .unwrap(),
             ImportRow::Skipped
@@ -685,5 +746,32 @@ mod tests {
                 .unwrap(),
             1
         );
+    }
+
+    #[test]
+    fn recognizes_bracketed_account_headings() {
+        assert_eq!(
+            account_heading_name(" 【兼松　美保子　様】 "),
+            Some("兼松　美保子　様")
+        );
+        assert_eq!(account_heading_name("Coffee shop"), None);
+    }
+
+    #[test]
+    fn suggests_japanese_statement_columns_and_headings() {
+        let path =
+            std::env::temp_dir().join(format!("budget2-csv-test-{}.csv", std::process::id()));
+        fs::write(
+            &path,
+            "ご利用日,ご利用店名,ご利用金額（円）\n,【兼松　美保子　様】,\n2025年8月1日,Coffee,500\n",
+        )
+        .unwrap();
+        let suggestions = suggest_columns(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+
+        assert_eq!(suggestions.date_column, "ご利用日");
+        assert_eq!(suggestions.description_column, "ご利用店名");
+        assert_eq!(suggestions.expense_column, "ご利用金額（円）");
+        assert_eq!(suggestions.account_column, ACCOUNT_HEADING);
     }
 }

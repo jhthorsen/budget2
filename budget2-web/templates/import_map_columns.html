@@ -11,7 +11,8 @@
       <div class="import-grid">
         <label>Date
           <select name="date_column" required>
-            {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == date_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str()==date_column.as_str()
+              %}selected{% endif %}>{{ header }}</option>{% endfor %}
           </select>
         </label>
         {% if !date_formats.is_empty() %}
@@ -23,25 +24,31 @@
         {% endif %}
         <label>Description
           <select name="description_column" required>
-            {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == description_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str()==description_column.as_str()
+              %}selected{% endif %}>{{ header }}</option>{% endfor %}
           </select>
         </label>
         <label>Income amount
           <select name="income_column">
             <option value="">None</option>
-            {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == income_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str()==income_column.as_str()
+              %}selected{% endif %}>{{ header }}</option>{% endfor %}
           </select>
         </label>
         <label>Expense amount
           <select name="expense_column">
             <option value="">None</option>
-          {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == expense_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str()==expense_column.as_str()
+              %}selected{% endif %}>{{ header }}</option>{% endfor %}
           </select>
         </label>
         <label>Account column (optional)
           <select name="account_column">
             <option value="">Use import rules</option>
-          {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == account_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+            <option value="FROM_HEADING_ROW" {% if account_column=="FROM_HEADING_ROW" %}selected{% endif %}>Account name
+              in heading rows</option>
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str()==account_column.as_str()
+              %}selected{% endif %}>{{ header }}</option>{% endfor %}
           </select>
         </label>
         <label>Fixed account name (optional)
@@ -50,7 +57,8 @@
         <label>Category column (optional)
           <select name="category_column">
             <option value="">Use import rules</option>
-          {% for header in headers %}<option value="{{ header }}" {% if header.as_str() == category_column.as_str() %}selected{% endif %}>{{ header }}</option>{% endfor %}
+            {% for header in headers %}<option value="{{ header }}" {% if header.as_str()==category_column.as_str()
+              %}selected{% endif %}>{{ header }}</option>{% endfor %}
           </select>
         </label>
         <label>Currency multiplier
