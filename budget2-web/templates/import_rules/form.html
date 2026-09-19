@@ -36,14 +36,20 @@
           case-insensitive.</small>
       </label>
     </form>
+    {% if is_editing %}
+    <p>This rule matches {{ uncategorized_matches }} uncategorized row{% if uncategorized_matches != 1 %}s{% endif %}.
+    </p>
+    {% endif %}
     <footer>
-      <button type="submit" form="import_rule_form">{% if is_editing %}Save rule{% else %}Add import rule{% endif
+      <button type="submit" form="import_rule_form">{% if is_editing %}Save{% else %}Add{% endif
         %}</button>
       {% if is_editing %}
+      <button type="submit" form="import_rule_form" formaction="/import_rules/{{ form.id }}/match" formmethod="post" {%
+        if form.category_id.is_none() %}disabled{% endif %}>Match</button>
       <button type="submit" class="danger" form="import_rule_form" formaction="/import_rules/{{ form.id }}/delete"
-        formmethod="post" formnovalidate>Delete rule</button>
+        formmethod="post" formnovalidate>Delete</button>
       {% endif %}
-      <button type="button" class="secondary" on:load on:click="el.closest('dialog').close()">Cancel</button>
+      <button type="button" class="secondary" on:load on:click="el.closest('dialog').close()">Close</button>
     </footer>
   </article>
 </dialog>

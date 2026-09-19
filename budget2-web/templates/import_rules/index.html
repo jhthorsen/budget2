@@ -18,8 +18,8 @@
         <thead>
           <tr>
             <th class="narrow">Category</th>
-            <th class="narrow">Priority</th>
             <th>Match expression</th>
+            <th class="narrow">Priority</th>
             <th class="narrow">Edit</th>
           </tr>
         </thead>
@@ -27,8 +27,8 @@
           {% for import_rule in import_rules %}
           <tr>
             <td class="narrow"><a href="/import_rules/{{ import_rule.id }}">{{ import_rule.category_name }}</a></td>
-            <td>{{ import_rule.priority / 10 }}</td>
             <td>{{ import_rule.match_description | assigned_or("") }}</td>
+            <td>{{ import_rule.priority / 10 }}</td>
             <td class="narrow"><a href="/import_rules/{{ import_rule.id }}" data-history="none">Edit</a></td>
           </tr>
           {% endfor %}

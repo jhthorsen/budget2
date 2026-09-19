@@ -31,6 +31,45 @@ impl Default for ImportRule {
 }
 
 impl ImportRule {
+    pub async fn uncategorized_match_count(
+        &self,
+        pool: &Pool,
+        household_id: i64,
+    ) -> Result<i64, sqlx::Error> {
+        let Some(description) = self.match_description.as_deref() else {
+            return Ok(0);
+        };
+        sqlx::query_scalar(
+            "select count(*) from transactions t join accounts a on a.id = t.account_id where a.household_id = ? and t.category_id is null and instr(lower(t.description), lower(?)) > 0",
+        )
+        .bind(household_id)
+        .bind(description)
+        .fetch_one(pool)
+        .await
+    }
+
+    pub async fn match_uncategorized(
+        &self,
+        pool: &Pool,
+        household_id: i64,
+    ) -> Result<u64, sqlx::Error> {
+        let Some(category_id) = self.category_id else {
+            return Ok(0);
+        };
+        let Some(description) = self.match_description.as_deref() else {
+            return Ok(0);
+        };
+        sqlx::query(
+            "update transactions set category_id = ? where category_id is null and id in (select t.id from transactions t join accounts a on a.id = t.account_id where a.household_id = ? and instr(lower(t.description), lower(?)) > 0)",
+        )
+        .bind(category_id)
+        .bind(household_id)
+        .bind(description)
+        .execute(pool)
+        .await
+        .map(|result| result.rows_affected())
+    }
+
     pub async fn all(pool: &Pool, household_id: i64) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Self,
@@ -155,5 +194,33 @@ impl ImportRule {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn matches_only_uncategorized_household_transactions() {
+        let pool = crate::build_pool("sqlite::memory:", true).await.unwrap();
+        for statement in [
+            "insert into users (id, email, name, oauth_provider, oauth_id) values (1, 'rules@example.com', 'Rules', 'test', 'rules')",
+            "insert into households (id, name) values (1, 'Home'), (2, 'Elsewhere')",
+            "insert into accounts (id, user_id, household_id, name) values (1, 1, 1, 'Home account'), (2, 1, 2, 'Other account')",
+            "insert into categories (id, household_id, name) values (1, 1, 'Food')",
+            "insert into transactions (user_id, account_id, category_id, type, amount, original_amount, description, processed_at) values (1, 1, null, 'expense', 1, 1, 'Coffee shop', '2026-01-01'), (1, 1, 1, 'expense', 1, 1, 'Coffee beans', '2026-01-01'), (1, 2, null, 'expense', 1, 1, 'Coffee shop', '2026-01-01')",
+        ] {
+            sqlx::query(statement).execute(&pool).await.unwrap();
+        }
+        let rule = ImportRule {
+            category_id: Some(1),
+            match_description: Some("coffee".to_string()),
+            ..Default::default()
+        };
+
+        assert_eq!(rule.uncategorized_match_count(&pool, 1).await.unwrap(), 1);
+        assert_eq!(rule.match_uncategorized(&pool, 1).await.unwrap(), 1);
+        assert_eq!(rule.uncategorized_match_count(&pool, 1).await.unwrap(), 0);
     }
 }
