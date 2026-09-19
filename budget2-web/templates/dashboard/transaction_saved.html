@@ -1,9 +1,16 @@
 {% set income = "income" %}
 <tr id="transaction-{{ transaction.id }}" data-swap="morph:#transaction-{{ transaction.id }}">
-  <td class="nowrap"><a href="/dashboard" on:load on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('date', '{{ transaction.processed_at }}'); el.href = u.pathname + u.search">{{ transaction.processed_at }}</a></td>
+  <td class="nowrap"><a href="/dashboard" on:load
+      on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('date', '{{ transaction.processed_at }}'); el.href = u.pathname + u.search">{{
+      transaction.processed_at }}</a></td>
   <td><a href="/dashboard/transactions/{{ transaction.id }}" data-history="none">{{ transaction.description }}</a></td>
-  <td><a href="/dashboard" on:load on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('account', '{{ transaction.account_id }}'); el.href = u.pathname + u.search">{{ transaction.account_name }}</a></td>
-  <td><a href="/dashboard" on:load on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('category', '{{ transaction.category_id }}'); el.href = u.pathname + u.search">{{ transaction.category_name }}</a></td>
-  <td class="text-right nowrap {% if transaction.transaction_type == income %}income{% else %}expense{% endif %}">{% if transaction.transaction_type == "income" %}+{% else %}−{% endif %}{{ transaction.formatted_amount() }}</td>
+  <td><a href="/dashboard" on:load
+      on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('account', '{{ transaction.account_id }}'); el.href = u.pathname + u.search">{{
+      transaction.account_name }}</a></td>
+  <td><a href="/dashboard" on:load
+      on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('category', '{{ transaction.category_id }}'); el.href = u.pathname + u.search">{{
+      transaction.category_name }}</a></td>
+  <td class="text-right nowrap {% if transaction.transaction_type == income %}income{% else %}expense{% endif %}">{% if
+    transaction.transaction_type == "income" %}+{% else %}−{% endif %}{{ transaction.formatted_amount() }}</td>
 </tr>
-{% include "dashboard/transaction_form.html" %}
+<dialog id="dialog"></dialog>

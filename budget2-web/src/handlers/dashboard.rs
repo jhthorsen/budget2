@@ -136,8 +136,6 @@ struct TransactionFormTemplate {
 #[template(path = "dashboard/transaction_saved.html")]
 struct TransactionSavedTemplate {
     transaction: model::Transaction,
-    categories: Vec<model::Category>,
-    csrf_token: String,
 }
 
 /// Values rendered into the partial response used by infinite scrolling.
@@ -272,13 +270,5 @@ pub async fn save_transaction(
     )
     .await?
     .ok_or("Transaction was not found or cannot be edited.")?;
-    Ok(Html(
-        TransactionSavedTemplate {
-            transaction,
-            categories: model::Category::all(&state.pool, membership.household_id).await?,
-            csrf_token: csrf_token(&session).await?,
-        }
-        .render()?,
-    )
-    .into_response())
+    Ok(Html(TransactionSavedTemplate { transaction }.render()?).into_response())
 }
