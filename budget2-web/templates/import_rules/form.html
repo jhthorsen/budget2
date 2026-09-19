@@ -30,7 +30,7 @@
       </label>
       <label>
         Match expression
-        <input type="text" name="match_description" minlength="3" maxlength="64" required
+        <input type="text" name="match_description" minlength="1" maxlength="64" required
           value="{{ form.match_description | assigned_or("") }}" placeholder="e.g. Food, Travel, Utilities">
         <small>Matches when the imported description contains this text. Matching is
           case-insensitive.</small>
