@@ -13,6 +13,7 @@ pub fn routes(state: super::AppState) -> axum::Router {
     .route("/", axum::routing::get(home::get))
     .route("/dashboard", axum::routing::get(dashboard::get))
     .route("/dashboard/transactions", axum::routing::get(dashboard::transactions))
+    .route("/dashboard/transactions/:id", axum::routing::get(dashboard::edit_transaction).post(dashboard::save_transaction))
     .route("/import", axum::routing::get(import::upload_form))
     .route("/import/upload", axum::routing::post(import::upload_then_map_columns))
     .route("/import/process", axum::routing::post(import::import_uploaded))

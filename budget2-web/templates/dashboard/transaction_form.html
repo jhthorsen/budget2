@@ -1,0 +1,33 @@
+<dialog id="dialog" open data-swap="morph:#dialog">
+  <article>
+    <header>
+      <h2>Edit transaction</h2>
+    </header>
+    <form id="transaction_form" method="post" action="/dashboard/transactions/{{ transaction.id }}" data-history="none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="id" value="{{ transaction.id }}">
+      <input type="hidden" name="account_id" value="{{ transaction.account_id }}">
+      <fieldset class="grid">
+        <label>Date <input name="processed_at" type="date" required value="{{ transaction.processed_at }}"></label>
+        <label>Type
+          <select name="transaction_type">
+            <option value="expense" {% if transaction.transaction_type=="expense" %}selected{% endif %}>Expense</option>
+            <option value="income" {% if transaction.transaction_type=="income" %}selected{% endif %}>Income</option>
+          </select>
+        </label>
+        <label>Amount <input name="amount" type="number" min="0" step="0.01" required
+            value="{{ transaction.amount }}"></label>
+      </fieldset>
+      <label>Description <input name="description" maxlength="255" required
+          value="{{ transaction.description }}"></label>
+      <label>Category
+        <select name="category_id">
+          <option value="0">Uncategorized</option>{% for category in categories %}<option value="{{ category.id }}" {%
+            if category.id==transaction.category_id %}selected{% endif %}>{{ category.name }}</option>{% endfor %}
+        </select>
+      </label>
+    </form>
+    <footer><button type="submit" form="transaction_form">Save transaction</button><button type="button"
+        class="secondary" on:load on:click="el.closest('dialog').close()">Close</button></footer>
+  </article>
+</dialog>

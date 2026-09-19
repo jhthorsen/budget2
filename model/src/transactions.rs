@@ -33,6 +33,8 @@ impl Dashboard {
 /// A transaction row prepared for display in the dashboard table.
 #[derive(Debug, sqlx::FromRow)]
 pub struct Transaction {
+    /// Database identifier used when editing the transaction.
+    pub id: i64,
     /// Date on which the transaction was processed.
     pub processed_at: String,
     /// Account identifier used by the dashboard filter link.
@@ -54,6 +56,73 @@ pub struct Transaction {
 impl Transaction {
     pub fn formatted_amount(&self) -> String {
         format_amount(self.amount)
+    }
+
+    pub async fn load_for_edit(
+        pool: &Pool,
+        id: i64,
+        household_id: i64,
+        viewer_id: i64,
+        role: super::Role,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Self>(
+            r#"select t.id, t.processed_at, t.account_id, t.description,
+              coalesce(nullif(a.friendly, ''), a.name) as account_name,
+              coalesce(t.category_id, 0) as category_id,
+              coalesce(c.name, 'Uncategorized') as category_name,
+              t.type as transaction_type, t.amount
+            from transactions t join accounts a on a.id = t.account_id
+            left join categories c on c.id = t.category_id
+            where t.id = ? and a.household_id = ? and (? = 'manager' or t.user_id = ?)"#,
+        )
+        .bind(id)
+        .bind(household_id)
+        .bind(role.as_str())
+        .bind(viewer_id)
+        .fetch_optional(pool)
+        .await
+    }
+
+    pub async fn save(
+        &self,
+        pool: &Pool,
+        household_id: i64,
+        viewer_id: i64,
+        role: super::Role,
+    ) -> Result<(), sqlx::Error> {
+        if !matches!(self.transaction_type.as_str(), "income" | "expense")
+            || self.amount < 0.0
+            || self.description.trim().is_empty()
+            || chrono::NaiveDate::parse_from_str(&self.processed_at, "%Y-%m-%d").is_err()
+        {
+            return super::invalid("Invalid transaction.");
+        }
+        let updated = sqlx::query(
+            r#"update transactions set account_id = ?, category_id = nullif(?, 0), type = ?, amount = ?, description = ?, processed_at = ?
+            where id = ? and (? = 'manager' or user_id = ?)
+              and exists (select 1 from accounts where id = ? and household_id = ?)
+              and (? = 0 or exists (select 1 from categories where id = ? and household_id = ?))"#,
+        )
+        .bind(self.account_id)
+        .bind(self.category_id)
+        .bind(&self.transaction_type)
+        .bind(self.amount)
+        .bind(self.description.trim())
+        .bind(&self.processed_at)
+        .bind(self.id)
+        .bind(role.as_str())
+        .bind(viewer_id)
+        .bind(self.account_id)
+        .bind(household_id)
+        .bind(self.category_id)
+        .bind(self.category_id)
+        .bind(household_id)
+        .execute(pool)
+        .await?;
+        if updated.rows_affected() == 0 {
+            return super::invalid("Transaction was not found or cannot be edited.");
+        }
+        Ok(())
     }
 }
 
@@ -255,6 +324,7 @@ impl Dashboard {
     ) -> Result<Transactions, sqlx::Error> {
         let mut transactions = sqlx::query_as::<_, Transaction>(
             r#"select
+              t.id,
               t.processed_at,
               t.account_id,
               t.description,
@@ -370,6 +440,52 @@ fn format_amount(amount: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn only_transaction_owner_or_manager_can_save() {
+        let pool = crate::build_pool("sqlite::memory:", true).await.unwrap();
+        for statement in [
+            "insert into users (id, email, name, oauth_provider, oauth_id) values (1, 'one@example.com', 'One', 'test', 'one'), (2, 'two@example.com', 'Two', 'test', 'two'), (3, 'three@example.com', 'Three', 'test', 'three')",
+            "insert into households (id, name) values (1, 'Family')",
+            "insert into accounts (id, user_id, household_id, name) values (1, 1, 1, 'Checking')",
+            "insert into transactions (id, user_id, account_id, type, amount, original_amount, description, processed_at) values (1, 1, 1, 'expense', 10, 10, 'Owned', '2026-01-01'), (2, 2, 1, 'expense', 20, 20, 'Other', '2026-01-01')",
+        ] {
+            sqlx::query(statement).execute(&pool).await.unwrap();
+        }
+
+        let transaction = |id: i64, description: &str| Transaction {
+            id,
+            account_id: 1,
+            category_id: 0,
+            transaction_type: "expense".into(),
+            amount: 10.0,
+            description: description.into(),
+            processed_at: "2026-01-02".into(),
+            account_name: String::new(),
+            category_name: String::new(),
+        };
+        transaction(1, "Updated")
+            .save(&pool, 1, 1, crate::Role::Member)
+            .await
+            .unwrap();
+        assert_eq!(
+            sqlx::query_scalar::<_, String>("select description from transactions where id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap(),
+            "Updated"
+        );
+        assert!(
+            transaction(2, "Denied")
+                .save(&pool, 1, 1, crate::Role::Assistant)
+                .await
+                .is_err()
+        );
+        transaction(2, "Manager update")
+            .save(&pool, 1, 3, crate::Role::Manager)
+            .await
+            .unwrap();
+    }
 
     #[tokio::test]
     async fn chart_currencies_are_optional_and_aggregated_in_both_views() {

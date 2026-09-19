@@ -1,8 +1,8 @@
 {% set income = "income" %}
 {% for transaction in transactions %}
-<tr data-swap="append:#transactions_body">
+<tr id="transaction-{{ transaction.id }}" data-swap="append:#transactions_body">
   <td class="nowrap"><a href="/dashboard" on:load on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('date', '{{ transaction.processed_at }}'); el.href = u.pathname + u.search">{{ transaction.processed_at }}</a></td>
-  <td>{{ transaction.description }}</td>
+  <td><a href="/dashboard/transactions/{{ transaction.id }}" data-history="none">{{ transaction.description }}</a></td>
   <td><a href="/dashboard" on:load on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('account', '{{ transaction.account_id }}'); el.href = u.pathname + u.search">{{ transaction.account_name }}</a></td>
   <td><a href="/dashboard" on:load on:click="const u = new URL('/dashboard', location); u.search = location.search; u.searchParams.set('category', '{{ transaction.category_id }}'); el.href = u.pathname + u.search">{{ transaction.category_name }}</a></td>
   <td class="text-right nowrap {% if transaction.transaction_type == income %}income{% else %}expense{% endif %}">

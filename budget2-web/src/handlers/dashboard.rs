@@ -96,6 +96,50 @@ pub struct DashboardTemplate {
     csrf_token: String,
 }
 
+#[derive(Deserialize)]
+pub struct TransactionForm {
+    csrf_token: String,
+    id: i64,
+    account_id: i64,
+    category_id: i64,
+    transaction_type: String,
+    amount: f64,
+    description: String,
+    processed_at: String,
+}
+
+impl From<TransactionForm> for model::Transaction {
+    fn from(form: TransactionForm) -> Self {
+        Self {
+            id: form.id,
+            account_id: form.account_id,
+            category_id: form.category_id,
+            transaction_type: form.transaction_type,
+            amount: form.amount,
+            description: form.description,
+            processed_at: form.processed_at,
+            account_name: String::new(),
+            category_name: String::new(),
+        }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "dashboard/transaction_form.html")]
+struct TransactionFormTemplate {
+    transaction: model::Transaction,
+    categories: Vec<model::Category>,
+    csrf_token: String,
+}
+
+#[derive(Template)]
+#[template(path = "dashboard/transaction_saved.html")]
+struct TransactionSavedTemplate {
+    transaction: model::Transaction,
+    categories: Vec<model::Category>,
+    csrf_token: String,
+}
+
 /// Values rendered into the partial response used by infinite scrolling.
 #[derive(Template)]
 #[template(path = "dashboard/transaction_rows.html")]
@@ -169,4 +213,72 @@ pub async fn transactions(
         next_transaction_offset: query.offset.max(0) + TRANSACTION_ROWS,
     };
     Ok(Html(page.render()?).into_response())
+}
+
+pub async fn edit_transaction(
+    State(state): State<AppState>,
+    session: tower_sessions::Session,
+    Path(id): Path<i64>,
+) -> HttpResult {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
+        return Ok(axum::response::Redirect::to("/auth/login").into_response());
+    };
+    let Some(transaction) = model::Transaction::load_for_edit(
+        &state.pool,
+        id,
+        membership.household_id,
+        user.id,
+        membership.role,
+    )
+    .await?
+    else {
+        return Ok(axum::response::Redirect::to("/dashboard").into_response());
+    };
+    Ok(Html(
+        TransactionFormTemplate {
+            transaction,
+            categories: model::Category::all(&state.pool, membership.household_id).await?,
+            csrf_token: csrf_token(&session).await?,
+        }
+        .render()?,
+    )
+    .into_response())
+}
+
+pub async fn save_transaction(
+    State(state): State<AppState>,
+    session: tower_sessions::Session,
+    Form(form): Form<TransactionForm>,
+) -> HttpResult {
+    let Ok((user, membership)) = get_current_membership(&state.pool, &session).await else {
+        return Ok(axum::response::Redirect::to("/auth/login").into_response());
+    };
+    verify_csrf(&session, &form.csrf_token).await?;
+    let id = form.id;
+    model::Transaction::from(form)
+        .save(
+            &state.pool,
+            membership.household_id,
+            user.id,
+            membership.role,
+        )
+        .await?;
+    let transaction = model::Transaction::load_for_edit(
+        &state.pool,
+        id,
+        membership.household_id,
+        user.id,
+        membership.role,
+    )
+    .await?
+    .ok_or("Transaction was not found or cannot be edited.")?;
+    Ok(Html(
+        TransactionSavedTemplate {
+            transaction,
+            categories: model::Category::all(&state.pool, membership.household_id).await?,
+            csrf_token: csrf_token(&session).await?,
+        }
+        .render()?,
+    )
+    .into_response())
 }
