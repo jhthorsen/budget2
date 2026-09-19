@@ -116,15 +116,24 @@ pub fn suggest_columns(path: &Path) -> Result<ColumnSuggestions, String> {
             .cloned()
             .unwrap_or_default()
     };
-    let date_column = find(&["date", "dato", "processed", "booked", "ご利用日"]);
-    let description_column = find(&[
-        "description",
-        "forklaring",
-        "beskrivelse",
-        "memo",
-        "text",
-        "ご利用店名",
-    ]);
+    let (date_column, description_column) = samples
+        .iter()
+        .find_map(|record| {
+            record.iter().enumerate().find_map(|(date_index, value)| {
+                parse_date(value, None).ok()?;
+                let description_index = record
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| *index != date_index)
+                    .max_by_key(|(_, value)| value.chars().count())?
+                    .0;
+                Some((
+                    headers[date_index].clone(),
+                    headers[description_index].clone(),
+                ))
+            })
+        })
+        .unwrap_or_default();
     let date_formats = if date_column.is_empty() {
         Vec::new()
     } else {
@@ -187,21 +196,13 @@ pub fn suggest_columns(path: &Path) -> Result<ColumnSuggestions, String> {
     };
 
     Ok(ColumnSuggestions {
-        date_column,
-        description_column,
-        income_column: find(&["income", "credit", "inntekt", "deposit", "inn ", "inn paa"]),
-        expense_column: find(&[
-            "expense",
-            "debit",
-            "kostnad",
-            "withdrawal",
-            "ut ",
-            "ut av",
-            "ご利用金額",
-        ]),
-        account_column,
         category_column: find(&["category", "kategori"]),
+        expense_column: find(&["expense", "debit", "kostnad", "withdrawal", "ut"]),
+        income_column: find(&["income", "credit", "deposit", "inn"]),
+        account_column,
+        date_column,
         date_formats,
+        description_column,
     })
 }
 
@@ -755,6 +756,24 @@ mod tests {
             Some("兼松　美保子　様")
         );
         assert_eq!(account_heading_name("Coffee shop"), None);
+    }
+
+    #[test]
+    fn suggests_date_and_description_from_values() {
+        let path = std::env::temp_dir().join(format!(
+            "budget2-csv-suggest-values-test-{}.csv",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            "A,B,C\n2025/08/01,A longer transaction description,500\n",
+        )
+        .unwrap();
+        let suggestions = suggest_columns(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+
+        assert_eq!(suggestions.date_column, "A");
+        assert_eq!(suggestions.description_column, "B");
     }
 
     #[test]
