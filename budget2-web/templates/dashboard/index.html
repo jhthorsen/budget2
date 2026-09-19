@@ -263,7 +263,7 @@
     for (const fraction of [1, 0.75, 0.5, 0.25, 0]) {
       const y = TOP_PADDING + PLOT_HEIGHT * (1 - fraction);
       append(chart, "line", {class: "amount-grid", x1: LEFT, y1: y, x2: RIGHT, y2: y});
-      append(chart, "text", {class: "muted", x: LEFT - 8, y, dy: "0.35em", "text-anchor": "end"}, (maximum * fraction).toFixed(2));
+      append(chart, "text", {class: "muted amount-label", x: LEFT - 8, y, dy: "0.35em", "text-anchor": "end"}, (maximum * fraction).toFixed(2));
     }
     append(chart, "line", {class: "daily-baseline", x1: LEFT, y1: TOP_PADDING, x2: LEFT, y2: PLOT_BOTTOM});
     append(chart, "line", {class: "daily-baseline", x1: LEFT, y1: PLOT_BOTTOM, x2: RIGHT, y2: PLOT_BOTTOM});
@@ -281,6 +281,7 @@
           return {
             x: LEFT + WIDTH * index / lastIndex,
             y: TOP_PADDING + PLOT_HEIGHT * (1 - amount / maximum),
+            amount,
             tooltip: day + " · " + name + " · " + kind + ": " + amount.toFixed(2),
           };
         });
@@ -293,7 +294,7 @@
         line.appendChild(path);
         for (const point of coordinates) line.appendChild(element("circle", {
           class: "chart-point", cx: point.x, cy: point.y, r: 2.5, tabindex: 0,
-          "aria-label": point.tooltip, "data-chart-tooltip": point.tooltip,
+          "aria-label": point.tooltip, "data-chart-tooltip": point.tooltip, "data-chart-amount": point.amount,
         }));
         group.appendChild(line);
       }
@@ -344,6 +345,22 @@
       path: series.querySelector(".series-line"),
       points: [...series.querySelectorAll(".chart-point")],
     }));
+    const amountLabels = [...chart.querySelectorAll(".amount-label")];
+
+    function updateYAxis() {
+      const visible = new Set(controlInputs.filter(input => input.checked).map(input => input.dataset.chartSeries));
+      const maximum = Math.max(1, ...series
+        .filter((_, index) => visible.has("line-chart-series-" + index))
+        .flatMap(item => item.points.map(point => Math.abs(point.amount))));
+      amountLabels.forEach((label, index) => label.textContent = (maximum * (1 - index / 4)).toFixed(2));
+      for (const point of points) {
+        const amount = Number(point.dataset.chartAmount);
+        point.setAttribute("cy", TOP_PADDING + PLOT_HEIGHT * (1 - amount / maximum));
+      }
+      for (const {path, points} of seriesPaths) path.setAttribute("d", points.map((point, index) =>
+        `${index ? "L" : "M"}${point.cx.baseVal.value},${point.cy.baseVal.value}`
+      ).join(""));
+    }
 
     function resizeChart() {
       const width = chart.getBoundingClientRect().width;
@@ -439,7 +456,10 @@
       };
       label.addEventListener("pointerleave", clearPreview);
       label.addEventListener("pointercancel", clearPreview);
-      input.addEventListener("change", () => setTooltip());
+      input.addEventListener("change", () => {
+        updateYAxis();
+        setTooltip();
+      });
     }
     updateVisibility();
   })();
